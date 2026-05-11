@@ -1,5 +1,8 @@
 # DeepSeek Codex Bridge
 
+[![中文](https://img.shields.io/badge/README-中文-blue)](#中文版)
+[![English](https://img.shields.io/badge/README-English-green)](#english-version)
+
 DeepSeek Codex Bridge connects DeepSeek to the Codex experience in VS Code. It
 keeps the normal OpenAI/GPT Codex environment separate, while giving DeepSeek a
 stable local bridge, resident project context, and a few short chat commands.
@@ -7,6 +10,8 @@ stable local bridge, resident project context, and a few short chat commands.
 ---
 
 ## 中文版
+
+[English](#english-version)
 
 ### 它解决什么
 
@@ -172,6 +177,8 @@ install-vscode-extension.bat          安装本地 launcher extension
 ---
 
 ## English Version
+
+[中文](#中文版)
 
 ### What It Solves
 
