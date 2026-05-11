@@ -1,7 +1,7 @@
 {
   "name": "deepseek-codex-launcher",
-  "displayName": "DeepSeek Codex Launcher",
-  "description": "Launch Codex with DeepSeek V4 Flash or Pro from VS Code.",
+  "displayName": "DeepSeek Codex Isolated Launcher",
+  "description": "Launch an isolated VS Code window whose Codex uses DeepSeek V4 Flash or Pro.",
   "version": "0.1.0",
   "publisher": "local",
   "engines": {
@@ -20,15 +20,15 @@
     "commands": [
       {
         "command": "deepseekCodex.pickAndLaunch",
-        "title": "DeepSeek Codex: Pick Model and Launch"
+        "title": "DeepSeek Codex: Open Isolated Window"
       },
       {
         "command": "deepseekCodex.launchFlash",
-        "title": "DeepSeek Codex: Launch V4 Flash"
+        "title": "DeepSeek Codex: Open Isolated Flash"
       },
       {
         "command": "deepseekCodex.launchPro",
-        "title": "DeepSeek Codex: Launch V4 Pro"
+        "title": "DeepSeek Codex: Open Isolated Pro"
       }
     ],
     "configuration": {
@@ -36,8 +36,13 @@
       "properties": {
         "deepseekCodexLauncher.root": {
           "type": "string",
-          "default": "H:\\\\COdex\\\\deepseek-codex",
-          "description": "Folder containing scripts/start-deepseek-codex.ps1."
+          "default": "",
+          "description": "Folder containing scripts/start-deepseek-vscode.ps1."
+        },
+        "deepseekCodexLauncher.deepSeekProxyUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional HTTP/HTTPS proxy URL used only by the local ds-codex proxy when calling api.deepseek.com."
         }
       }
     }

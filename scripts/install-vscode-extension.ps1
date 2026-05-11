@@ -17,10 +17,12 @@ if (Test-Path $Target) {
 
 Copy-Item -LiteralPath $Source -Destination $Target -Recurse
 
-Write-Host "Installed DeepSeek Codex Launcher to:"
+Write-Host "Installed DeepSeek Codex isolated launcher to:"
 Write-Host "  $Target"
 Write-Host ""
 Write-Host "Restart VS Code, then run one of these commands from Command Palette:"
-Write-Host "  DeepSeek Codex: Pick Model and Launch"
-Write-Host "  DeepSeek Codex: Launch V4 Flash"
-Write-Host "  DeepSeek Codex: Launch V4 Pro"
+Write-Host "  DeepSeek Codex: Open Isolated Window"
+Write-Host "  DeepSeek Codex: Open Isolated Flash"
+Write-Host "  DeepSeek Codex: Open Isolated Pro"
+Write-Host ""
+Write-Host "Switch models inside the Codex chat with /D-switch."

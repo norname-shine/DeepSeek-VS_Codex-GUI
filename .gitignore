@@ -1,12 +1,20 @@
 node_modules/
 .env
 .env.*
+!.env.example
 
 *.log
 *.tmp
 *.local
 
 tools/cloudflared.exe
+
+.codex-deepseek-vscode/
+.vscode-deepseek-user-data/
+.codex-official-vscode-test/
+.deepseek/
+
+model-eval/
 
 .DS_Store
 Thumbs.db

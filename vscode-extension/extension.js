@@ -21,22 +21,30 @@ function findLauncherRoot() {
   return configured || "";
 }
 
+function getDeepSeekProxyUrl() {
+  return String(
+    vscode.workspace
+      .getConfiguration("deepseekCodexLauncher")
+      .get("deepSeekProxyUrl") || "",
+  ).trim();
+}
+
 function hasLauncher(root) {
-  return fs.existsSync(path.join(root, "scripts", "start-deepseek-codex.ps1"));
+  return fs.existsSync(path.join(root, "scripts", "start-deepseek-vscode.ps1"));
 }
 
 function quotePowerShell(value) {
   return `"${String(value).replace(/`/g, "``").replace(/"/g, '`"')}"`;
 }
 
-async function launch(profile) {
+async function runScript(profile, scriptName, terminalName) {
   const root = findLauncherRoot();
-  const script = path.join(root, "scripts", "start-deepseek-codex.ps1");
+  const script = path.join(root, "scripts", scriptName);
 
   if (!root || !fs.existsSync(script)) {
     const action = "Open Settings";
     const selected = await vscode.window.showErrorMessage(
-      `DeepSeek Codex launcher script was not found. Configure deepseekCodexLauncher.root.`,
+      `Isolated DeepSeek VS Code launcher script was not found. Configure deepseekCodexLauncher.root.`,
       action,
     );
     if (selected === action) {
@@ -49,7 +57,7 @@ async function launch(profile) {
   }
 
   const terminal = vscode.window.createTerminal({
-    name: `DeepSeek Codex ${profile.replace("deepseek-", "")}`,
+    name: terminalName,
     cwd: root,
     shellPath: "powershell.exe",
   });
@@ -61,12 +69,21 @@ async function launch(profile) {
     "Bypass",
     "-File",
     quotePowerShell(script),
-    "-CodexProfile",
+    "-Model",
     profile,
-  ].join(" ");
+  ];
+
+  const deepSeekProxyUrl = getDeepSeekProxyUrl();
+  if (deepSeekProxyUrl) {
+    command.push("-DeepSeekProxyUrl", quotePowerShell(deepSeekProxyUrl));
+  }
 
   terminal.show();
-  terminal.sendText(command);
+  terminal.sendText(command.join(" "));
+}
+
+async function launch(profile) {
+  await runScript(profile, "start-deepseek-vscode.ps1", `DeepSeek VS Code ${profile.replace("deepseek-", "")}`);
 }
 
 async function pickAndLaunch() {
