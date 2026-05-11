@@ -1,4 +1,4 @@
-# DeepSeek Codex Bridge
+# DeepSeek VS_Codex GUI
 
 [![中文](https://img.shields.io/badge/README-中文-blue)](#中文版)
 [![English](https://img.shields.io/badge/README-English-green)](#english-version)
