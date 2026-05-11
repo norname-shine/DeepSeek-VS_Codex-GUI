@@ -1,0 +1,45 @@
+{
+  "name": "deepseek-codex-launcher",
+  "displayName": "DeepSeek Codex Launcher",
+  "description": "Launch Codex with DeepSeek V4 Flash or Pro from VS Code.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:deepseekCodex.launchFlash",
+    "onCommand:deepseekCodex.launchPro",
+    "onCommand:deepseekCodex.pickAndLaunch"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "deepseekCodex.pickAndLaunch",
+        "title": "DeepSeek Codex: Pick Model and Launch"
+      },
+      {
+        "command": "deepseekCodex.launchFlash",
+        "title": "DeepSeek Codex: Launch V4 Flash"
+      },
+      {
+        "command": "deepseekCodex.launchPro",
+        "title": "DeepSeek Codex: Launch V4 Pro"
+      }
+    ],
+    "configuration": {
+      "title": "DeepSeek Codex Launcher",
+      "properties": {
+        "deepseekCodexLauncher.root": {
+          "type": "string",
+          "default": "H:\\\\COdex\\\\deepseek-codex",
+          "description": "Folder containing scripts/start-deepseek-codex.ps1."
+        }
+      }
+    }
+  }
+}

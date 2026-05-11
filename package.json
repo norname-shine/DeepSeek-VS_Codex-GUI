@@ -1,0 +1,12 @@
+{
+  "name": "deepseek-codex-responses-proxy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/deepseek-responses-proxy.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

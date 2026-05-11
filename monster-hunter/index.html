@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monster Hunter: Wild Hunt</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a0a;color:#e0d5b0;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at 50% 0%,#1a1a0a 0%,#0a0a0a 70%);pointer-events:none;z-index:-1}
+.top-bar{display:flex;align-items:center;gap:16px;padding:12px 20px;background:rgba(0,0,0,0.8);border-bottom:2px solid #8b6914;position:sticky;top:0;z-index:100;backdrop-filter:blur(8px)}
+.top-bar .logo{font-size:22px;font-weight:900;color:#f0c040;text-shadow:0 0 12px rgba(240,192,64,0.5);letter-spacing:2px}
+.top-bar .resources{display:flex;gap:20px;margin-left:auto}
+.top-bar .res{font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px}
+.top-bar .res .icon{font-size:18px}
+.top-bar .res.hp{color:#4f4}
+.top-bar .res.zenny{color:#ff0}
+.top-bar .res.mats{color:#f80}
+.main-layout{display:flex;gap:0;height:calc(100vh - 60px)}
+.sidebar{width:280px;background:rgba(20,20,15,0.95);border-right:2px solid #3a3010;padding:16px;overflow-y:auto;flex-shrink:0}
+.sidebar h3{color:#c0a040;font-size:14px;text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;border-bottom:1px solid #3a3010;padding-bottom:8px}
+.sidebar .btn{display:block;width:100%;padding:10px 12px;margin-bottom:6px;background:rgba(60,50,20,0.6);border:1px solid #5a4a20;color:#d0c090;font-size:13px;cursor:pointer;text-align:left;border-radius:4px;transition:all 0.2s}
+.sidebar .btn:hover{background:#6a5020;border-color:#c0a040;color:#f0d060}
+.sidebar .btn.active{background:#8b6914;color:#fff;border-color:#f0c040;box-shadow:0 0 10px rgba(240,192,64,0.3)}
+.monster-list{margin-top:8px}
+.monster-item{display:flex;align-items:center;gap:10px;padding:8px;margin-bottom:4px;background:rgba(40,30,10,0.5);border-radius:4px;cursor:pointer;transition:all 0.2s;border:1px solid transparent}
+.monster-item:hover{border-color:#8b6914;background:rgba(60,40,10,0.6)}
+.monster-item .m-icon{font-size:28px;width:36px;text-align:center}
+.monster-item .m-info{flex:1}
+.monster-item .m-name{font-size:13px;font-weight:700;color:#e0c070}
+.monster-item .m-stars{font-size:11px;color:#f80}
+.content-area{flex:1;padding:24px;overflow-y:auto;display:flex;flex-direction:column;align-items:center}
+.panel{background:rgba(20,20,15,0.9);border:2px solid #3a3010;border-radius:8px;padding:24px;width:100%;max-width:700px;display:none}
+.panel.active{display:block}
+.panel h2{font-size:24px;color:#f0c040;margin-bottom:16px;text-shadow:0 0 8px rgba(240,192,64,0.3);letter-spacing:1px}
+.panel h3{font-size:16px;color:#c0a040;margin:16px 0 8px}
+.hunt-scene{text-align:center}
+.monster-display{font-size:80px;margin:16px 0;animation:float 3s ease-in-out infinite;cursor:pointer;user-select:none;transition:transform 0.1s}
+.monster-display:active{transform:scale(1.1)}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+.hp-bar-outer{width:100%;max-width:400px;height:24px;background:#1a1a1a;border:2px solid #5a4a20;border-radius:12px;margin:12px auto;overflow:hidden}
+.hp-bar-inner{height:100%;background:linear-gradient(90deg,#4f4,#8f4,#f44);transition:width 0.3s;border-radius:10px}
+.hp-text{font-size:13px;color:#aaa;margin-top:4px}
+.damage-btn{display:inline-block;padding:12px 28px;font-size:16px;font-weight:700;background:linear-gradient(180deg,#c03030,#801010);color:#fff;border:2px solid #f06060;border-radius:8px;cursor:pointer;margin:12px 6px;transition:all 0.2s}
+.damage-btn:hover{background:linear-gradient(180deg,#e04040,#a02020);box-shadow:0 0 16px rgba(240,60,60,0.4)}
+.damage-btn:active{transform:scale(0.95)}
+.log-area{max-height:180px;overflow-y:auto;margin-top:16px;padding:12px;background:rgba(0,0,0,0.4);border-radius:6px;font-size:12px;text-align:left}
+.log-area .log-entry{padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.05)}
+.log-hit{color:#f66}
+.log-crit{color:#ff0;font-weight:700}
+.log-break{color:#f80}
+.log-kill{color:#0ff;font-weight:700}
+.log-loot{color:#f0c040}
+.log-heal{color:#4f4}
+.inv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px}
+.inv-slot{background:rgba(40,30,10,0.5);border:1px solid #3a3010;border-radius:6px;padding:10px;text-align:center;font-size:11px;transition:all 0.2s}
+.inv-slot:hover{border-color:#8b6914}
+.inv-slot .item-icon{font-size:28px;display:block;margin-bottom:4px}
+.inv-slot .item-name{color:#c0a040;font-weight:600}
+.inv-slot .item-qty{color:#888;font-size:10px}
+.craft-item{display:flex;align-items:center;gap:10px;padding:10px;margin-bottom:6px;background:rgba(40,30,10,0.5);border:1px solid #3a3010;border-radius:6px}
+.craft-item .craft-icon{font-size:32px}
+.craft-item .craft-info{flex:1}
+.craft-item .craft-name{font-weight:700;color:#e0c070}
+.craft-item .craft-cost{font-size:11px;color:#aaa}
+.craft-item .craft-btn{padding:6px 14px;background:#8b6914;color:#fff;border:1px solid #c0a040;border-radius:4px;cursor:pointer;font-weight:600;font-size:12px}
+.craft-item .craft-btn:disabled{opacity:0.4;cursor:not-allowed}
+.craft-item .craft-btn:hover:not(:disabled){background:#a08020}
+.weapon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.weapon-card{background:rgba(40,30,10,0.5);border:2px solid #3a3010;border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:all 0.2s}
+.weapon-card:hover{border-color:#8b6914;box-shadow:0 0 12px rgba(139,105,20,0.3)}
+.weapon-card.equipped{border-color:#f0c040;box-shadow:0 0 16px rgba(240,192,64,0.4)}
+.weapon-card .wp-icon{font-size:36px;display:block;margin-bottom:8px}
+.weapon-card .wp-name{font-weight:700;color:#e0c070;font-size:13px}
+.weapon-card .wp-atk{font-size:11px;color:#f66;margin-top:4px}
+.equipped-badge{display:inline-block;background:#f0c040;color:#000;font-size:10px;padding:2px 8px;border-radius:10px;margin-top:4px;font-weight:700}
+.stats-display{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:16px}
+.stat-box{background:rgba(40,30,10,0.5);border:1px solid #3a3010;border-radius:8px;padding:14px 20px;text-align:center;min-width:80px}
+.stat-box .stat-val{font-size:28px;font-weight:900;color:#f0c040}
+.stat-box .stat-label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-top:4px}
+.quest-card{background:rgba(40,30,10,0.5);border:2px solid #3a3010;border-radius:8px;padding:14px;margin-bottom:10px;cursor:pointer;transition:all 0.2s}
+.quest-card:hover{border-color:#8b6914}
+.quest-card .q-title{font-weight:700;color:#e0c070;font-size:15px}
+.quest-card .q-detail{font-size:12px;color:#aaa;margin-top:4px;display:flex;gap:12px}
+.quest-card .q-reward{color:#f0c040}
+.buff-indicator{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.buff-tag{padding:4px 10px;background:rgba(0,128,0,0.3);border:1px solid #0a0;border-radius:12px;font-size:11px;color:#0f0;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+.toast{position:fixed;top:80px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.9);color:#f0c040;padding:12px 24px;border:1px solid #8b6914;border-radius:8px;font-weight:700;z-index:200;opacity:0;pointer-events:none;transition:opacity 0.3s;font-size:14px}
+.toast.show{opacity:1}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:#0a0a0a}
+::-webkit-scrollbar-thumb{background:#3a3010;border-radius:3px}
+.effect-flash{animation:flash 0.3s ease-out}
+@keyframes flash{0%{filter:brightness(3)}100%{filter:brightness(1)}}
+.dmg-float{position:fixed;pointer-events:none;font-weight:900;font-size:24px;color:#f66;z-index:300;animation:dmgUp 1s ease-out forwards;text-shadow:0 0 8px rgba(255,0,0,0.6)}
+@keyframes dmgUp{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-60px)}}
+</style>
+</head>
+<body><div class="top-bar">
+  <div class="logo">⚔ MONSTER HUNTER</div>
+  <div class="resources">
+    <div class="res hp"><span class="icon">❤</span> <span id="hp-display">100/100</span></div>
+    <div class="res zenny"><span class="icon">◉</span> <span id="zenny-display">0</span>z</div>
+    <div class="res mats"><span class="icon">✦</span> <span id="mats-display">0</span></div>
+  </div>
+</div>
+<div class="main-layout">
+  <div class="sidebar">
+    <h3>⚔ 菜单</h3>
+    <button class="btn active" data-panel="hunt">⚔ 狩猎</button>
+    <button class="btn" data-panel="weapons">🗡 武器</button>
+    <button class="btn" data-panel="craft">🔨 制作</button>
+    <button class="btn" data-panel="inventory">🎒 背包</button>
+    <button class="btn" data-panel="stats">📈 状态</button>
+    <h3>👉 魔物图鉴</h3>
+    <div class="monster-list" id="monster-list"></div>
+  </div>
+  <div class="content-area" id="content-area">
+    <div class="panel active" id="panel-hunt"></div>
+    <div class="panel" id="panel-weapons"></div>
+    <div class="panel" id="panel-craft"></div>
+    <div class="panel" id="panel-inventory"></div>
+    <div class="panel" id="panel-stats"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div><script>
+const MONSTERS = [
+  { id: 'rathalos', name: '火龙', icon: '🐉', hp: 200, atk: 15, stars: 5, tier: 'A', element: 'fire', loot: [{ item: '火龙鳞', icon: '🔥', qty: 2 }, { item: '火龙翼爪', icon: '🦅', qty: 1 }], zenny: 500 },
+  { id: 'diablos', name: '角龙', icon: '🦏', hp: 250, atk: 20, stars: 6, tier: 'S', element: 'earth', loot: [{ item: '角龙甲壳', icon: '🛡', qty: 2 }, { item: '弯曲角', icon: '🌀', qty: 1 }], zenny: 800 },
+  { id: 'zinogre', name: '雷狼龙', icon: '🐺', hp: 220, atk: 18, stars: 5, tier: 'A', element: 'thunder', loot: [{ item: '雷狼龙毛', icon: '⚡', qty: 2 }, { item: '超电壳', icon: '💡', qty: 1 }], zenny: 650 },
+  { id: 'mizutsune', name: '泡狐龙', icon: '🦊', hp: 180, atk: 12, stars: 4, tier: 'B', element: 'water', loot: [{ item: '泡狐龙鳞', icon: '💧', qty: 2 }, { item: '泡狐龙爪', icon: '✨', qty: 1 }], zenny: 400 },
+  { id: 'nargacuga', name: '迅龙', icon: '🐱', hp: 170, atk: 16, stars: 4, tier: 'B', element: 'dark', loot: [{ item: '迅龙黑毛', icon: '🖤', qty: 2 }, { item: '迅龙刃翼', icon: '🪶', qty: 1 }], zenny: 450 },
+  { id: 'rajang', name: '金狮子', icon: '🦍', hp: 300, atk: 30, stars: 7, tier: 'SS', element: 'thunder', loot: [{ item: '金狮刚毛', icon: '💛', qty: 3 }, { item: '黄金角', icon: '👑', qty: 1 }], zenny: 1200 },
+  { id: 'velkhana', name: '冰咒龙', icon: '🐲', hp: 280, atk: 22, stars: 6, tier: 'S', element: 'ice', loot: [{ item: '冰晶鳞', icon: '❄', qty: 2 }, { item: '龙玉', icon: '💎', qty: 1 }], zenny: 1000 },
+  { id: 'magnamalo', name: '怨虎龙', icon: '🐅', hp: 240, atk: 19, stars: 5, tier: 'A', element: 'fire', loot: [{ item: '怨虎龙甲壳', icon: '🟣', qty: 2 }, { item: '怨念玉', icon: '👻', qty: 1 }], zenny: 700 },
+];
+const WEAPONS = [
+  { id: 'w1', name: '铁刀', icon: '⚔', atk: 10, cost: 0, desc: '基础太刀，人手一把' },
+  { id: 'w2', name: '骨锤', icon: '🔨', atk: 14, cost: 200, desc: '用兽骨制成的大锤', req: [{ item: '角龙甲壳', qty: 1 }] },
+  { id: 'w3', name: '飞龙刀·朱', icon: '🗡', atk: 18, cost: 400, desc: '火龙素材锻的太刀', req: [{ item: '火龙鳞', qty: 3 }, { item: '火龙翼爪', qty: 2 }] },
+  { id: 'w4', name: '雷狼双剑', icon: '⚡', atk: 20, cost: 500, desc: '雷属性双剑，极速连斩', req: [{ item: '雷狼龙毛', qty: 3 }, { item: '超电壳', qty: 2 }] },
+  { id: 'w5', name: '冰牙长枪', icon: '❄', atk: 22, cost: 600, desc: '冰属性长枪，稳如磐石', req: [{ item: '冰晶鳞', qty: 3 }, { item: '龙玉', qty: 1 }] },
+  { id: 'w6', name: '黑蚀龙铳', icon: '🔫', atk: 25, cost: 800, desc: '怨虎素材制的铳枪', req: [{ item: '怨虎龙甲壳', qty: 3 }, { item: '怨念玉', qty: 1 }] },
+];
+const ITEMS = [
+  { id: 'potion', name: '回复药', icon: '🧪', desc: '恢复30点HP', effect: { heal: 30 }, qty: 5 },
+  { id: 'megapotion', name: '大回复药', icon: '💚', desc: '恢复60点HP', effect: { heal: 60 }, qty: 2 },
+  { id: 'antidote', name: '解毒药', icon: '💊', desc: '解除中毒状态', effect: { curePoison: true }, qty: 3 },
+  { id: 'mightseed', name: '怪力种子', icon: '🌰', desc: '10回合内+5攻击力', effect: { atkBuff: 5, buffTurns: 10 }, qty: 2 },
+  { id: 'flashbomb', name: '闪光弹', icon: '💥', desc: '使怪物眩晕1回合', effect: { stun: 1 }, qty: 2 },
+  { id: 'trap', name: '麻痹陷阱', icon: '🕸', desc: '使怪物麻痹2回合', effect: { trap: 2 }, qty: 1 },
+  { id: 'bbqspit', name: '烤肉架', icon: '🍖', desc: '恢复至满HP', effect: { healFull: true }, qty: 1 },
+  { id: 'whetstone', name: '砥石', icon: '🪨', desc: '下次攻击必定暴击', effect: { guaranteeCrit: true }, qty: 3 },
+];
+let state = {
+  hp: 100, maxHp: 100, zenny: 0, weapon: WEAPONS[0], ownedWeapons: [WEAPONS[0].id],
+  inventory: {}, selectedMonster: null, selectedWeapon: null,
+  buffs: { atkBuff: 0, buffTurns: 0, guaranteeCrit: false, stunTurns: 0, trapTurns: 0 },
+  kills: {}, huntLog: [],
+};
+ITEMS.forEach(i => { if (!state.inventory[i.id]) state.inventory[i.id] = i.qty; });
+function saveGame() { localStorage.setItem('mh_save', JSON.stringify(state)); }
+function loadGame() {
+  const s = localStorage.getItem('mh_save');
+  if (s) { const d = JSON.parse(s); Object.assign(state, d); }
+}
+loadGame();
+function getAtk() { return (state.weapon ? state.weapon.atk : 5) + state.buffs.atkBuff; }
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+function updateTopBar() {
+  document.getElementById('hp-display').textContent = state.hp + '/' + state.maxHp;
+  document.getElementById('zenny-display').textContent = state.zenny;
+  const mats = Object.entries(state.inventory).reduce((s, [k, v]) => {
+    return ITEMS.find(i => i.id === k) ? s : s + v;
+  }, 0);
+  document.getElementById('mats-display').textContent = mats;
+}
+function addLog(msg, cls) {
+  state.huntLog.unshift({ msg, cls, time: Date.now() });
+  if (state.huntLog.length > 50) state.huntLog.pop();
+  renderLog();
+}
+function renderLog() {
+  const panel = document.getElementById('panel-hunt');
+  if (!panel || !panel.classList.contains('active')) return;
+  const logDiv = panel.querySelector('.log-area');
+  if (!logDiv) return;
+  logDiv.innerHTML = state.huntLog.slice(0, 15).map(e =>
+    '<div class="log-entry ' + e.cls + '">' + e.msg + '</div>'
+  ).join('');
+}
+function getLootMonster(monster) {
+  const multi = monster.tier === 'SS' ? 3 : monster.tier === 'S' ? 2 : 1;
+  const loot = [];
+  monster.loot.forEach(l => {
+    const q = l.qty * multi + Math.floor(Math.random() * 2);
+    loot.push({ item: l.item, icon: l.icon, qty: q });
+  });
+  return loot;
+}
+function addToInventory(itemName, qty) {
+  if (!state.inventory[itemName]) state.inventory[itemName] = 0;
+  state.inventory[itemName] += qty;
+}
+function hasMats(reqs) {
+  if (!reqs) return true;
+  return reqs.every(r => (state.inventory[r.item] || 0) >= r.qty);
+}
+function consumeMats(reqs) {
+  reqs.forEach(r => { state.inventory[r.item] -= r.qty; });
+}function renderHuntPanel() {
+  const panel = document.getElementById('panel-hunt');
+  if (!state.selectedMonster) {
+    panel.innerHTML = '<h2>⚔ 狩猎</h2><p style="color:#888;text-align:center;margin-top:40px">👈 从左侧选择一个魔物开始狩猎</p>';
+    return;
+  }
+  const m = state.selectedMonster;
+  const hpPct = Math.max(0, (m.currentHp / m.hp) * 100);
+  const stunText = state.buffs.stunTurns > 0 ? ' ⚡眩晕中(' + state.buffs.stunTurns + ')' : '';
+  const trapText = state.buffs.trapTurns > 0 ? ' 🕸麻痹中(' + state.buffs.trapTurns + ')' : '';
+  panel.innerHTML = `
+    <div class="hunt-scene">
+      <h2>⚔ ${m.name} ${m.icon}</h2>
+      <div style="color:#888;font-size:13px">⭐ ${'★'.repeat(m.stars)}${'☆'.repeat(7-m.stars)} | Tier ${m.tier} | ${m.element}</div>
+      <div class="monster-display" id="monster-display">${m.icon}</div>
+      <div class="hp-bar-outer"><div class="hp-bar-inner" style="width:${hpPct}%"></div></div>
+      <div class="hp-text">HP: ${Math.max(0,m.currentHp)} / ${m.hp}${stunText}${trapText}</div>
+      <div style="margin-top:16px">
+        <button class="damage-btn" onclick="attackMonster()">⚔ 攻击! (ATK:${getAtk()})</button>
+        <button class="damage-btn" style="background:linear-gradient(180deg,#3070c0,#1040a0);border-color:#60a0f0" onclick="useItemMenu()">🧪 使用道具</button>
+      </div>
+      <div class="buff-indicator" id="buff-indicator"></div>
+      <div class="log-area">${state.huntLog.slice(0,15).map(e => '<div class="log-entry '+e.cls+'">'+e.msg+'</div>').join('')}</div>
+      <button style="margin-top:12px;padding:6px 16px;background:rgba(200,40,40,0.5);border:1px solid #c44;color:#faa;border-radius:4px;cursor:pointer;font-size:12px" onclick="fleeHunt()">🏃 逃跑</button>
+    </div>
+  `;
+  renderBuffs();
+}
+function renderBuffs() {
+  const el = document.getElementById('buff-indicator');
+  if (!el) return;
+  const tags = [];
+  if (state.buffs.atkBuff > 0) tags.push('<span class="buff-tag">💪 +' + state.buffs.atkBuff + ' ATK (' + state.buffs.buffTurns + '回合)</span>');
+  if (state.buffs.guaranteeCrit) tags.push('<span class="buff-tag">💥 必暴</span>');
+  if (state.buffs.stunTurns > 0) tags.push('<span class="buff-tag" style="border-color:#ff0;color:#ff0">⚡ 眩晕' + state.buffs.stunTurns + '</span>');
+  if (state.buffs.trapTurns > 0) tags.push('<span class="buff-tag" style="border-color:#ff0;color:#ff0">🕸 麻痹' + state.buffs.trapTurns + '</span>');
+  el.innerHTML = tags.join('');
+}
+function useItemMenu() {
+  const items = ITEMS.filter(i => state.inventory[i.id] > 0 && i.effect);
+  if (items.length === 0) { showToast('没有任何可用道具!'); return; }
+  const list = items.map(i => i.icon + ' ' + i.name + ' x' + state.inventory[i.id] + ' - ' + i.desc).join('\\n');
+  const choice = prompt('选择道具 (输入编号):\\n' + items.map((i, idx) => (idx + 1) + '. ' + i.icon + ' ' + i.name + ' x' + state.inventory[i.id]).join('\\n'));
+  if (!choice) return;
+  const idx = parseInt(choice) - 1;
+  if (isNaN(idx) || idx < 0 || idx >= items.length) { showToast('无效选择!'); return; }
+  useItem(items[idx]);
+}
+function useItem(item) {
+  if (state.inventory[item.id] <= 0) { showToast('道具不足!'); return; }
+  state.inventory[item.id]--;
+  if (item.effect.heal) {
+    state.hp = Math.min(state.maxHp, state.hp + item.effect.heal);
+    addLog('使用 ' + item.icon + ' ' + item.name + '，恢复' + item.effect.heal + 'HP', 'log-heal');
+    showToast('+' + item.effect.heal + ' HP!');
+  }
+  if (item.effect.healFull) {
+    state.hp = state.maxHp;
+    addLog('使用 🍖 烤肉架，HP完全恢复!', 'log-heal');
+    showToast('HP 全满!');
+  }
+  if (item.effect.curePoison) {
+    addLog('使用 💊 解毒药，解除中毒!', 'log-heal');
+    showToast('中毒解除!');
+  }
+  if (item.effect.atkBuff) {
+    state.buffs.atkBuff = item.effect.atkBuff;
+    state.buffs.buffTurns = item.effect.buffTurns;
+    addLog('使用 🌰 怪力种子，ATK+' + item.effect.atkBuff + ' (' + item.effect.buffTurns + '回合)', 'log-heal');
+    showToast('ATK +' + item.effect.atkBuff + '!');
+  }
+  if (item.effect.guaranteeCrit) {
+    state.buffs.guaranteeCrit = true;
+    addLog('使用 🪨 砥石，下次攻击必暴击!', 'log-heal');
+    showToast('研磨完成!');
+  }
+  if (item.effect.stun && state.selectedMonster) {
+    state.buffs.stunTurns += item.effect.stun;
+    addLog('使用 💥 闪光弹，怪物眩晕' + item.effect.stun + '回合!', 'log-break');
+    showToast('怪物眩晕!');
+  }
+  if (item.effect.trap && state.selectedMonster) {
+    state.buffs.trapTurns += item.effect.trap;
+    addLog('使用 🕸 麻痹陷阱，怪物麻痹' + item.effect.trap + '回合!', 'log-break');
+    showToast('陷阱触发!');
+  }
+  updateTopBar();
+  renderHuntPanel();
+  saveGame();
+}
+function attackMonster() {
+  if (!state.selectedMonster || state.selectedMonster.currentHp <= 0) return;
+  const m = state.selectedMonster;
+  let dmg = getAtk();
+  let isCrit = state.buffs.guaranteeCrit || Math.random() < 0.1;
+  let critMulti = 1;
+  if (isCrit) { critMulti = 1.5 + Math.random() * 0.5; dmg = Math.floor(dmg * critMulti); state.buffs.guaranteeCrit = false; }
+  const dmgVariance = Math.floor(Math.random() * 6) - 3;
+  dmg = Math.max(1, dmg + dmgVariance);
+  m.currentHp = Math.max(0, m.currentHp - dmg);
+  const critCls = isCrit ? 'log-crit' : 'log-hit';
+  const critTxt = isCrit ? ' 暴击! x' + critMulti.toFixed(1) : '';
+  addLog('造成 ' + dmg + ' 点伤害!' + critTxt, critCls);
+  spawnDmgFloat(dmg, isCrit);
+  if (state.buffs.atkBuff > 0) { state.buffs.buffTurns--; if (state.buffs.buffTurns <= 0) state.buffs.atkBuff = 0; }
+  if (m.currentHp <= 0) {
+    onMonsterKilled(m);
+  } else {
+    if (state.buffs.stunTurns > 0) {
+      state.buffs.stunTurns--;
+      addLog(m.icon + ' ' + m.name + ' 处于眩晕中，无法行动!', 'log-break');
+    } else if (state.buffs.trapTurns > 0) {
+      state.buffs.trapTurns--;
+      addLog(m.icon + ' ' + m.name + ' 处于麻痹中，无法行动!', 'log-break');
+    } else {
+      monsterAttack(m);
+    }
+  }
+  updateTopBar();
+  renderHuntPanel();
+  saveGame();
+}
+function monsterAttack(m) {
+  const mDmg = Math.max(1, m.atk + Math.floor(Math.random() * 8) - 4);
+  state.hp = Math.max(0, state.hp - mDmg);
+  addLog(m.icon + ' ' + m.name + ' 反击造成 ' + mDmg + ' 点伤害!', 'log-hit');
+  if (state.hp <= 0) {
+    addLog('💀 力竭倒下! 失去部分素材...', 'log-hit');
+    state.selectedMonster = null;
+    state.hp = Math.floor(state.maxHp / 2);
+    const mats = Object.keys(state.inventory).filter(k => !ITEMS.find(i => i.id === k));
+    mats.forEach(k => { if (state.inventory[k] > 0) state.inventory[k] = Math.max(0, state.inventory[k] - Math.ceil(state.inventory[k] / 3)); });
+    showToast('力竭倒下! 失去部分素材...');
+    updateTopBar();
+    renderHuntPanel();
+    saveGame(); return;
+  }
+}
+function spawnDmgFloat(dmg, isCrit) {
+  const el = document.createElement('div');
+  el.className = 'dmg-float';
+  el.textContent = (isCrit ? '💥 ' : '') + dmg;
+  el.style.left = (30 + Math.random() * 30) + '%';
+  el.style.top = '40%';
+  el.style.color = isCrit ? '#ff0' : '#f66';
+  el.style.fontSize = isCrit ? '32px' : '24px';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1100);
+}
+function onMonsterKilled(m) {
+  addLog('🏆 ' + m.name + ' 被击败!', 'log-kill');
+  const loot = getLootMonster(m);
+  loot.forEach(l => { addToInventory(l.item, l.qty); addLog('获得 ' + l.icon + ' ' + l.item + ' x' + l.qty, 'log-loot'); });
+  state.zenny += m.zenny;
+  addLog('获得 ' + m.zenny + 'z', 'log-loot');
+  if (!state.kills[m.id]) state.kills[m.id] = 0;
+  state.kills[m.id]++;
+  showToast('🏆 ' + m.name + ' 狩猎成功! +' + m.zenny + 'z');
+  state.selectedMonster = null;
+  updateTopBar();
+  renderHuntPanel();
+  renderMonsterList();
+  saveGame();
+}
+function selectMonster(monster) {
+  if (state.selectedMonster && state.selectedMonster.currentHp > 0 && state.selectedMonster.id === monster.id) return;
+  state.selectedMonster = { ...monster, currentHp: monster.hp };
+  state.huntLog = [];
+  state.buffs = { atkBuff: 0, buffTurns: 0, guaranteeCrit: false, stunTurns: 0, trapTurns: 0 };
+  addLog('⚔ 讨伐开始! 目标: ' + monster.icon + ' ' + monster.name, 'log-loot');
+  renderHuntPanel();
+  updateTopBar();
+  saveGame();
+}
+function fleeHunt() {
+  if (!state.selectedMonster) return;
+  addLog('🏃 逃离了战斗!', 'log-heal');
+  state.selectedMonster = null;
+  state.huntLog = [];
+  state.buffs = { atkBuff: 0, buffTurns: 0, guaranteeCrit: false, stunTurns: 0, trapTurns: 0 };
+  renderHuntPanel();
+  saveGame();
+}function renderMonsterList() {
+  const el = document.getElementById('monster-list');
+  el.innerHTML = MONSTERS.map(m => {
+    const killed = state.kills[m.id] || 0;
+    return `<div class="monster-item" onclick="selectMonster(MONSTERS.find(x=>x.id==='${m.id}'))">
+      <div class="m-icon">${m.icon}</div>
+      <div class="m-info">
+        <div class="m-name">${m.name}</div>
+        <div class="m-stars">${'★'.repeat(m.stars)} | Tier ${m.tier} | ${m.element}</div>
+      </div>
+      <div style="font-size:11px;color:#888">x${killed}</div>
+    </div>`;
+  }).join('');
+}
+function renderWeaponPanel() {
+  const panel = document.getElementById('panel-weapons');
+  panel.innerHTML = `
+    <h2>🗡 武器</h2>
+    <p style="color:#888;font-size:13px;margin-bottom:12px">当前装备: <span style="color:#f0c040;font-weight:700">${state.weapon.icon} ${state.weapon.name}</span> (ATK:${state.weapon.atk})</p>
+    <div class="weapon-grid">
+      ${WEAPONS.map(w => {
+        const owned = state.ownedWeapons.includes(w.id);
+        const equipped = state.weapon.id === w.id;
+        const canCraft = hasMats(w.req) && state.zenny >= (w.cost || 0);
+        let btnHtml = '';
+        if (!owned) {
+          btnHtml = `<button class="craft-btn" ${!canCraft?'disabled':''} onclick="craftWeapon('${w.id}')" style="margin-top:6px">${canCraft?'🔨 制作':'🔒 材料不足'}</button>`;
+          if (w.req) btnHtml += `<div style="font-size:10px;color:#888;margin-top:2px">${w.req.map(r=>r.item+'x'+r.qty).join(',')} | ${w.cost}z</div>`;
+        } else if (equipped) {
+          btnHtml = '<div class="equipped-badge" style="margin-top:6px">装备中</div>';
+        } else {
+          btnHtml = `<button class="craft-btn" onclick="equipWeapon('${w.id}')" style="margin-top:6px">装备</button>`;
+        }
+        return `<div class="weapon-card${equipped?' equipped':''}">
+          <span class="wp-icon">${w.icon}</span>
+          <div class="wp-name">${w.name}</div>
+          <div class="wp-atk">ATK: ${w.atk}</div>
+          <div style="font-size:10px;color:#888">${w.desc}</div>
+          ${btnHtml}
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+function equipWeapon(id) {
+  const w = WEAPONS.find(x => x.id === id);
+  if (!w || !state.ownedWeapons.includes(id)) return;
+  state.weapon = w;
+  showToast('装备 ' + w.icon + ' ' + w.name + '! ATK:' + w.atk);
+  renderWeaponPanel();
+  saveGame();
+}
+function craftWeapon(id) {
+  const w = WEAPONS.find(x => x.id === id);
+  if (!w || state.ownedWeapons.includes(id)) return;
+  if (!hasMats(w.req)) { showToast('材料不足!'); return; }
+  if (state.zenny < (w.cost || 0)) { showToast('金币不足!'); return; }
+  consumeMats(w.req || []);
+  state.zenny -= (w.cost || 0);
+  state.ownedWeapons.push(w.id);
+  state.weapon = w;
+  showToast('🔨 制作成功: ' + w.name + '!');
+  updateTopBar();
+  renderWeaponPanel();
+  saveGame();
+}
+function renderCraftPanel() {
+  const panel = document.getElementById('panel-craft');
+  const recipes = [
+    { name: '回复药', icon: '🧪', desc: '恢复30HP', cost: 50, gives: { type: 'item', id: 'potion', qty: 1 }, req: null },
+    { name: '大回复药', icon: '💚', desc: '恢复60HP', cost: 100, gives: { type: 'item', id: 'megapotion', qty: 1 }, req: [{ item: '回复药', qty: 1 }] },
+    { name: '怪力种子', icon: '🌰', desc: '+5 ATK 10回合', cost: 80, gives: { type: 'item', id: 'mightseed', qty: 1 }, req: [{ item: '火龙鳞', qty: 1 }] },
+    { name: '闪光弹', icon: '💥', desc: '眩晕1回合', cost: 60, gives: { type: 'item', id: 'flashbomb', qty: 1 }, req: [{ item: '迅龙黑毛', qty: 1 }] },
+    { name: '麻痹陷阱', icon: '🕸', desc: '麻痹2回合', cost: 100, gives: { type: 'item', id: 'trap', qty: 1 }, req: [{ item: '雷狼龙毛', qty: 2 }] },
+    { name: '砥石', icon: '🪨', desc: '必暴击一次', cost: 30, gives: { type: 'item', id: 'whetstone', qty: 1 }, req: null },
+    { name: '烤肉架', icon: '🍖', desc: '满血恢复', cost: 40, gives: { type: 'item', id: 'bbqspit', qty: 1 }, req: null },
+  ];
+  panel.innerHTML = `
+    <h2>🔨 道具制作</h2>
+    <p style="color:#888;font-size:13px;margin-bottom:16px">消耗素材和金币制作道具</p>
+    ${recipes.map((r, idx) => {
+      const can = hasMats(r.req) && state.zenny >= r.cost;
+      const reqText = r.req ? r.req.map(x => x.item + 'x' + x.qty).join(', ') + ' | ' : '';
+      return `<div class="craft-item">
+        <div class="craft-icon">${r.icon}</div>
+        <div class="craft-info">
+          <div class="craft-name">${r.name}</div>
+          <div class="craft-cost">${reqText}${r.cost}z — ${r.desc}</div>
+        </div>
+        <button class="craft-btn" ${!can?'disabled':''} onclick="doCraft(${idx})">${can?'制作':'不足'}</button>
+      </div>`;
+    }).join('')}
+  `;
+  window._craftRecipes = recipes;
+}
+function doCraft(idx) {
+  const r = window._craftRecipes[idx];
+  if (!r) return;
+  if (!hasMats(r.req)) { showToast('材料不足!'); return; }
+  if (state.zenny < r.cost) { showToast('金币不足!'); return; }
+  consumeMats(r.req || []);
+  state.zenny -= r.cost;
+  addToInventory(r.gives.id, r.gives.qty);
+  showToast('🔨 制作完成: ' + r.name + '!');
+  updateTopBar();
+  renderCraftPanel();
+  saveGame();
+}
+function renderInventoryPanel() {
+  const panel = document.getElementById('panel-inventory');
+  const mats = [];
+  const items = [];
+  Object.entries(state.inventory).forEach(([k, v]) => {
+    if (v <= 0) return;
+    const itemDef = ITEMS.find(i => i.id === k);
+    if (itemDef) items.push({ ...itemDef, qty: v });
+    else mats.push({ item: k, qty: v });
+  });
+  panel.innerHTML = `
+    <h2>🎒 背包</h2>
+    <h3>🧪 道具</h3>
+    <div class="inv-grid">${items.map(i => `<div class="inv-slot"><span class="item-icon">${i.icon}</span><span class="item-name">${i.name}</span><span class="item-qty">x${i.qty}</span></div>`).join('') || '<p style="color:#888">空空如也</p>'}</div>
+    <h3>💎 素材</h3>
+    <div class="inv-grid">${mats.map(m => `<div class="inv-slot"><span class="item-icon">📦</span><span class="item-name">${m.item}</span><span class="item-qty">x${m.qty}</span></div>`).join('') || '<p style="color:#888">无素材</p>'}</div>
+  `;
+}
+function renderStatsPanel() {
+  const panel = document.getElementById('panel-stats');
+  const totalKills = Object.values(state.kills).reduce((s, v) => s + v, 0);
+  const favMonster = Object.entries(state.kills).sort((a, b) => b[1] - a[1])[0];
+  const favName = favMonster ? (MONSTERS.find(m => m.id === favMonster[0]) || {}).name || '?' : '无';
+  const matCount = Object.entries(state.inventory).filter(([k]) => !ITEMS.find(i => i.id === k)).reduce((s, [, v]) => s + v, 0);
+  panel.innerHTML = `
+    <h2>📈 猎人状态</h2>
+    <div class="stats-display">
+      <div class="stat-box"><div class="stat-val">${state.maxHp}</div><div class="stat-label">最大HP</div></div>
+      <div class="stat-box"><div class="stat-val">${getAtk()}</div><div class="stat-label">攻击力</div></div>
+      <div class="stat-box"><div class="stat-val">${state.weapon.icon} ${state.weapon.name}</div><div class="stat-label">当前武器</div></div>
+      <div class="stat-box"><div class="stat-val">${totalKills}</div><div class="stat-label">总讨伐数</div></div>
+      <div class="stat-box"><div class="stat-val">${favName}</div><div class="stat-label">最爱猎物</div></div>
+      <div class="stat-box"><div class="stat-val">${matCount}</div><div class="stat-label">素材总数</div></div>
+      <div class="stat-box"><div class="stat-val">${state.zenny}z</div><div class="stat-label">金币</div></div>
+      <div class="stat-box"><div class="stat-val">${state.ownedWeapons.length}</div><div class="stat-label">拥有武器</div></div>
+    </div>
+    <h3>🏆 讨伐记录</h3>
+    <div style="max-height:200px;overflow-y:auto">
+    ${MONSTERS.filter(m => state.kills[m.id]).map(m => `<div style="display:flex;align-items:center;gap:10px;padding:6px;border-bottom:1px solid #3a3010"><span style="font-size:24px">${m.icon}</span><span style="flex:1;color:#e0c070">${m.name}</span><span style="color:#f80">${'★'.repeat(m.stars)}</span><span style="color:#f0c040;font-weight:700">x${state.kills[m.id]}</span></div>`).join('') || '<p style="color:#888">尚未狩猎任何魔物</p>'}
+    </div>
+  `;
+}function switchPanel(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sidebar .btn').forEach(b => b.classList.remove('active'));
+  const panel = document.getElementById('panel-' + name);
+  if (panel) panel.classList.add('active');
+  const btn = document.querySelector('.sidebar .btn[data-panel="' + name + '"]');
+  if (btn) btn.classList.add('active');
+  if (name === 'hunt') renderHuntPanel();
+  else if (name === 'weapons') renderWeaponPanel();
+  else if (name === 'craft') renderCraftPanel();
+  else if (name === 'inventory') renderInventoryPanel();
+  else if (name === 'stats') renderStatsPanel();
+}
+document.querySelectorAll('.sidebar .btn[data-panel]').forEach(btn => {
+  btn.addEventListener('click', () => switchPanel(btn.dataset.panel));
+});
+function init() {
+  renderMonsterList();
+  renderHuntPanel();
+  updateTopBar();
+}
+init();
+</script>
+</body>
+</html>
