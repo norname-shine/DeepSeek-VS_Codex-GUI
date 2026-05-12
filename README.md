@@ -55,7 +55,7 @@ Codex 的 VS Code 桌面体验适合真实项目开发，但接入第三方模�
 
 | 问题 | DeepSeek-VS_Codex GUI 的处理方式 |
 | --- | --- |
-| 上下文不稳定 | 启动时生成常驻项目上下文，并在请求时自动注入 |
+| 上下文不稳定 | 聊天窗口消息、附件、选区和工具结果优先；同时自动补充 README、规则文档和 SKILL 等项目背景 |
 | 模型切换麻烦 | 提供 `/D-switch` 等聊天框短指令 |
 | 代理路径混杂 | DeepSeek 上游请求走独立代理配置 |
 | 不想影响原 Codex 环境 | 使用隔离 VS Code profile 和隔离 Codex 配置 |
@@ -65,7 +65,8 @@ Codex 的 VS Code 桌面体验适合真实项目开发，但接入第三方模�
 
 - **隔离运行**：独立 VS Code profile 与 Codex 配置，不污染正常 GPT / Codex 环境。
 - **DeepSeek 模型切换**：支持 DeepSeek V4 Pro / Flash，并可通过聊天框指令切换。
-- **常驻项目上下文**：启动时扫描项目文件，生成 `.deepseek/resident-context.md`，为每轮请求提供项目背景。
+- **聊天窗口上下文优先**：默认使用 Codex 面板传入的消息、附件、选区和工具结果作为当前任务事实源。
+- **项目背景自动识别**：默认收集用户项目中的 README、AGENTS、规则文档和 SKILL，生成 `.deepseek/resident-context.md` 作为低优先级背景补充。
 - **独立网络代理**：DeepSeek 上游请求可单独配置代理，不影响原有 OpenAI / GPT 请求路径。
 - **VS Code Codex 工作流保留**：继续使用 Codex 面板、文件上下文、选区、diff、跳转和任务交互体验。
 - **本地 CLI 入口**：需要命令行模式时，可通过独立脚本启动本地 Codex CLI。
@@ -77,7 +78,7 @@ Codex 的 VS Code 桌面体验适合真实项目开发，但接入第三方模�
 flowchart LR
   A[User in VS Code Codex Panel] --> B[Isolated VS Code Profile]
   B --> C[Local DeepSeek Responses Proxy]
-  C --> D[Resident Project Context]
+  C -. optional background .-> D[Resident Project Context]
   C --> E[Dedicated DeepSeek Upstream Proxy]
   E --> F[DeepSeek V4 Pro / Flash]
 
@@ -88,7 +89,7 @@ flowchart LR
 
 1. 生成隔离 Codex 配置。
 2. 同步主 Codex 配置中的插件、MCP、marketplace、connector 配置块。
-3. 刷新常驻项目上下文。
+3. 使用 Codex 聊天窗口上下文，并自动刷新项目背景文档包。
 4. 启动本地 DeepSeek 兼容代理。
 5. 打开隔离 VS Code 窗口。
 
@@ -133,15 +134,26 @@ flowchart LR
 
 ## 常驻上下文
 
-常驻上下文默认开启。它不是一次性问答内容，而是为 DeepSeek Codex 的每轮请求提供项目背景。
+默认上下文分为两层：
 
-默认扫描：
+- **当前任务上下文**：来自 Codex 聊天窗口，包括当前消息、附件、选区、工具结果和会话输入，优先级最高。
+- **项目背景上下文**：自动从用户项目中收集 README、AGENTS、规则文档和 SKILL，作为低优先级补充。
+
+默认自动识别：
 
 ```text
 README.md
-src
-scripts
-vscode-extension
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.github/copilot-instructions.md
+.cursor/rules
+.codex/rules
+.codex/instructions.md
+.codex/skills
+**/SKILL.md
+**/*.rules.md
+**/*.instructions.md
 ```
 
 生成文件：
@@ -150,15 +162,23 @@ vscode-extension
 .deepseek/resident-context.md
 ```
 
-该文件不会提交到仓库。
+该文件不会提交到仓库。它只是低优先级背景材料；聊天窗口里的最新用户消息、附件、选区和工具结果始终优先。
 
-### 自定义扫描范围
+### 自定义项目背景范围
+
+默认不扫描完整代码目录。需要加入源码背景时，可以显式指定：
 
 ```powershell
-.\start-deepseek-vscode.bat -ResidentContextPath README.md,src,scripts
+.\start-deepseek-vscode.bat -EnableResidentContext -ResidentContextPath src,scripts,vscode-extension
 ```
 
-### 跳过自动刷新
+也可以只指定规则和 README：
+
+```powershell
+.\start-deepseek-vscode.bat -ResidentContextPath README.md,AGENTS.md,.cursor/rules
+```
+
+### 保持只使用聊天窗口上下文
 
 ```powershell
 .\start-deepseek-vscode.bat -SkipResidentContext
@@ -183,6 +203,17 @@ vscode-extension
 ```
 
 CLI 与 VS Code 共用同一套隔离配置、代理和常驻上下文。
+
+Codex CLI 会优先拦截 `/xxx` 命令，所以不要在 CLI 交互界面里输入 `/D-switch`。请在终端外部使用：
+
+```powershell
+.\start-deepseek-cli.bat help
+.\start-deepseek-cli.bat switch
+.\start-deepseek-cli.bat switch-pro
+.\start-deepseek-cli.bat switch-flash
+.\start-deepseek-cli.bat model
+.\start-deepseek-cli.bat context
+```
 
 ## VS Code 命令面板
 
@@ -264,7 +295,7 @@ The VS Code Codex desktop workflow is useful for real project work, but third-pa
 
 | Problem | How this project handles it |
 | --- | --- |
-| Context may not reach the model reliably | Generates resident project context and injects it into requests |
+| Context may not reach the model reliably | Prioritizes Codex chat-window messages, attachments, selections, and tool results, while automatically adding README, rule docs, and SKILL as project background. |
 | Model switching is slow | Adds chat commands such as `/D-switch` |
 | Network routing should be separate | Allows a dedicated DeepSeek upstream proxy |
 | Normal Codex setup should stay untouched | Uses an isolated VS Code profile and Codex config |
@@ -274,7 +305,8 @@ The VS Code Codex desktop workflow is useful for real project work, but third-pa
 
 - **Isolated runtime**: separate VS Code profile and Codex config.
 - **DeepSeek model switching**: DeepSeek V4 Pro / Flash with chat-based commands.
-- **Resident project context**: generates `.deepseek/resident-context.md` on startup and uses it as project background.
+- **Chat-window context first**: uses messages, attachments, selections, and tool results from the Codex panel as the authoritative task context.
+- **Automatic project background**: collects README, AGENTS, rule documents, and SKILL files from the user project into `.deepseek/resident-context.md` as low-priority background.
 - **Dedicated upstream proxy**: DeepSeek traffic can use a separate proxy path.
 - **VS Code Codex workflow**: keep chat, files, selections, diffs, navigation, and guided task interaction in one workspace.
 - **Local CLI entrypoint**: use the same isolated environment from the command line.
@@ -286,14 +318,14 @@ The VS Code Codex desktop workflow is useful for real project work, but third-pa
 flowchart LR
   A[User in VS Code Codex Panel] --> B[Isolated VS Code Profile]
   B --> C[Local DeepSeek Responses Proxy]
-  C --> D[Resident Project Context]
+  C -. optional background .-> D[Resident Project Context]
   C --> E[Dedicated DeepSeek Upstream Proxy]
   E --> F[DeepSeek V4 Pro / Flash]
 
   B -. keeps separate .-> G[Normal GPT / Codex Setup]
 ```
 
-On startup, the launcher prepares the isolated Codex config, syncs plugin / MCP / marketplace / connector config blocks, refreshes resident context, starts the local DeepSeek proxy, and opens an isolated VS Code window.
+On startup, the launcher prepares the isolated Codex config, syncs plugin / MCP / marketplace / connector config blocks, uses Codex chat-window context for the active task, refreshes the project-background document pack, starts the local DeepSeek proxy, and opens an isolated VS Code window.
 
 ## Quick Start
 
@@ -336,15 +368,26 @@ These commands are handled by the local DeepSeek proxy, so you do not need to ed
 
 ## Resident Context
 
-Resident context is enabled by default. It is not a one-off prompt. It provides project background to every DeepSeek Codex request.
+Default context has two layers:
 
-Default inputs:
+- **Active task context**: Codex chat-window messages, attachments, selected code, tool results, and session input. This has the highest priority.
+- **Project background context**: README, AGENTS, rule documents, and SKILL files discovered from the user project. This is low-priority background.
+
+Automatically discovered by default:
 
 ```text
 README.md
-src
-scripts
-vscode-extension
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.github/copilot-instructions.md
+.cursor/rules
+.codex/rules
+.codex/instructions.md
+.codex/skills
+**/SKILL.md
+**/*.rules.md
+**/*.instructions.md
 ```
 
 Generated file:
@@ -353,15 +396,23 @@ Generated file:
 .deepseek/resident-context.md
 ```
 
-This file is not committed to the repository.
+This file is not committed to the repository. It is only low-priority background material; latest chat messages, attachments, selected code, and tool results take priority.
 
-### Customize the scope
+### Customize project background scope
+
+Full source directories are not scanned by default. Add them explicitly when needed:
 
 ```powershell
-.\start-deepseek-vscode.bat -ResidentContextPath README.md,src,scripts
+.\start-deepseek-vscode.bat -EnableResidentContext -ResidentContextPath src,scripts,vscode-extension
 ```
 
-### Skip refresh
+Or restrict the background to README and rule docs:
+
+```powershell
+.\start-deepseek-vscode.bat -ResidentContextPath README.md,AGENTS.md,.cursor/rules
+```
+
+### Keep chat-window context only
 
 ```powershell
 .\start-deepseek-vscode.bat -SkipResidentContext
@@ -384,6 +435,18 @@ This only affects DeepSeek upstream requests.
 ```
 
 The CLI and VS Code entrypoints share the same isolated config, proxy, and resident context.
+
+Codex CLI intercepts `/xxx` commands before they reach the proxy, so do not type
+`/D-switch` inside the CLI. Use terminal-level commands instead:
+
+```powershell
+.\start-deepseek-cli.bat help
+.\start-deepseek-cli.bat switch
+.\start-deepseek-cli.bat switch-pro
+.\start-deepseek-cli.bat switch-flash
+.\start-deepseek-cli.bat model
+.\start-deepseek-cli.bat context
+```
 
 ## VS Code Command Palette
 

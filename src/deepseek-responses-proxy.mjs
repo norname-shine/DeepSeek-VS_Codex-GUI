@@ -54,6 +54,7 @@ function normalizeDeepSeekModel(requestedModel) {
 function resolveUpstreamModel(requestedModel) {
   const mapped = normalizeDeepSeekModel(requestedModel);
   if (!mapped) return null;
+  activeModel = loadActiveModel();
   return activeModel || mapped;
 }
 
@@ -183,16 +184,16 @@ function getLatestUserText(body) {
 }
 
 function isDeepSeekCommand(text) {
-  return /^\/d-(help|model|context|switch)\b/i.test(text.trim());
+  return /^\/?d-(help|model|context|switch)\b/i.test(text.trim());
 }
 
 function commandName(text) {
-  return text.trim().match(/^\/d-(help|model|context|switch)\b/i)?.[0] || "";
+  return text.trim().match(/^\/?d-(help|model|context|switch)\b/i)?.[0] || "";
 }
 
 function handleDeepSeekCommand(text) {
   const command = text.trim().toLowerCase();
-  if (/^\/d-switch\b/.test(command)) {
+  if (/^\/?d-switch\b/.test(command)) {
     const switchedModel = switchActiveModelFromCommand(text);
     return {
       model: switchedModel,
@@ -200,14 +201,14 @@ function handleDeepSeekCommand(text) {
     };
   }
 
-  if (/^\/d-model\b/.test(command)) {
+  if (/^\/?d-model\b/.test(command)) {
     return {
       model: activeModel,
       text: `当前模型：${activeModel}。`,
     };
   }
 
-  if (/^\/d-context\b/.test(command)) {
+  if (/^\/?d-context\b/.test(command)) {
     const loaded = Boolean(readResidentContext());
     return {
       model: activeModel,
@@ -278,8 +279,8 @@ function responseInputToMessages(body, upstreamModel) {
     messages.push({
       role: "system",
       content: [
-        "Resident project context supplied by the local DeepSeek context tool.",
-        "Use it as background material, but prefer the latest user message and explicit file contents when they conflict.",
+        "Optional resident project background supplied by the local DeepSeek context tool.",
+        "This is not the Codex chat-window context. Treat chat messages, attached files, selected code, tool results, and the latest user request as authoritative when they conflict.",
         "",
         residentContext,
       ].join("\n"),

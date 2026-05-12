@@ -17,13 +17,15 @@ param(
     [ValidateSet("auto", "off")]
     [string]$ResponseLanguage = "auto",
 
-    [string[]]$ResidentContextPath = @("README.md", "src", "scripts", "vscode-extension"),
+    [string[]]$ResidentContextPath = @(),
 
-    [string]$ResidentContextPrompt = "Resident project context for DeepSeek Codex. Preserve architecture, entrypoints, proxy behavior, chat commands, usage notes, and known risks.",
+    [string]$ResidentContextPrompt = "Optional resident project background for DeepSeek Codex. Treat Codex chat-window context, attached files, selected code, tool results, and the latest user message as authoritative.",
 
     [int]$ResidentContextMaxInputTokens = 180000,
 
     [int]$ResidentContextMaxFileBytes = 1000000,
+
+    [switch]$EnableResidentContext,
 
     [switch]$SkipResidentContext,
 
@@ -36,6 +38,9 @@ param(
     [switch]$ProxyOnly,
 
     [switch]$CliOnly,
+
+    [ValidateSet("", "help", "switch", "switch-pro", "switch-flash", "model", "context")]
+    [string]$CliCommand = "",
 
     [switch]$PrepareOnly
 )
@@ -58,6 +63,7 @@ $ProxyOutLog = Join-Path $ProjectRoot "deepseek-vscode-proxy.out.log"
 $ProxyErrLog = Join-Path $ProjectRoot "deepseek-vscode-proxy.err.log"
 $ProxyStateDir = Join-Path $ProjectRoot ".deepseek"
 $ActiveModelStateFile = Join-Path $ProxyStateDir "active-model.txt"
+$ProxyContextModeStateFile = Join-Path $ProxyStateDir "proxy-context-mode.txt"
 $ResidentContextFile = Join-Path $ProxyStateDir "resident-context.md"
 $BaseUrl = $BaseUrl.TrimEnd("/")
 $DeepSeekProxyUrl = $DeepSeekProxyUrl.Trim()
@@ -68,6 +74,7 @@ $UpstreamModel = switch ($Model) {
     "deepseek-pro" { "deepseek-v4-pro" }
     "deepseek-flash" { "deepseek-v4-flash" }
 }
+$ResidentContextPathExplicit = $PSBoundParameters.ContainsKey("ResidentContextPath")
 
 function Resolve-CodeLauncher {
     $candidate = Join-Path $env:LOCALAPPDATA "Programs\Microsoft VS Code\bin\code.cmd"
@@ -341,7 +348,89 @@ function Get-PluginConfigBlocks {
     return ([Environment]::NewLine + ($result.ToArray() -join [Environment]::NewLine) + [Environment]::NewLine)
 }
 
+function Add-ExistingContextPath {
+    param(
+        [System.Collections.Generic.List[string]]$Paths,
+        [string]$RelativePath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RelativePath)) {
+        return
+    }
+
+    $fullPath = Join-Path $ProjectRoot $RelativePath
+    if (Test-Path -LiteralPath $fullPath) {
+        $normalized = $RelativePath -replace '\\', '/'
+        if (-not $Paths.Contains($normalized)) {
+            $Paths.Add($normalized) | Out-Null
+        }
+    }
+}
+
+function Add-DiscoveredContextFiles {
+    param(
+        [System.Collections.Generic.List[string]]$Paths,
+        [string]$Pattern
+    )
+
+    $excludedParts = @(
+        ".git",
+        ".deepseek",
+        ".vscode-deepseek-user-data",
+        ".codex-deepseek-vscode",
+        "node_modules"
+    )
+
+    Get-ChildItem -LiteralPath $ProjectRoot -Recurse -File -Filter $Pattern -ErrorAction SilentlyContinue |
+        Where-Object {
+            $relative = [System.IO.Path]::GetRelativePath($ProjectRoot, $_.FullName) -replace '\\', '/'
+            foreach ($part in $excludedParts) {
+                if ($relative -eq $part -or $relative.StartsWith("$part/")) {
+                    return $false
+                }
+            }
+            return $true
+        } |
+        ForEach-Object {
+            $relative = [System.IO.Path]::GetRelativePath($ProjectRoot, $_.FullName) -replace '\\', '/'
+            if (-not $Paths.Contains($relative)) {
+                $Paths.Add($relative) | Out-Null
+            }
+        }
+}
+
+function Get-DefaultResidentContextPaths {
+    $paths = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($relativePath in @(
+        "README.md",
+        "AGENTS.md",
+        "CLAUDE.md",
+        "GEMINI.md",
+        ".cursorrules",
+        ".windsurfrules",
+        ".github/copilot-instructions.md",
+        ".cursor/rules",
+        ".codex/rules",
+        ".codex/instructions.md",
+        ".codex/skills"
+    )) {
+        Add-ExistingContextPath -Paths $paths -RelativePath $relativePath
+    }
+
+    Add-DiscoveredContextFiles -Paths $paths -Pattern "SKILL.md"
+    Add-DiscoveredContextFiles -Paths $paths -Pattern "*.rules.md"
+    Add-DiscoveredContextFiles -Paths $paths -Pattern "*.instructions.md"
+
+    return $paths.ToArray()
+}
+
 function Update-ResidentContext {
+    if (-not $ResidentContextEnabled) {
+        Write-Host "Resident project context disabled. Codex chat-window context will be used."
+        return
+    }
+
     if ($SkipResidentContext) {
         Write-Host "Resident context refresh skipped."
         return
@@ -374,8 +463,102 @@ function Update-ResidentContext {
         -MaxFileBytes $ResidentContextMaxFileBytes
 }
 
+function Read-ActiveModel {
+    if (Test-Path -LiteralPath $ActiveModelStateFile) {
+        $value = (Get-Content -LiteralPath $ActiveModelStateFile -Raw).Trim()
+        if ($value -in @("deepseek-v4-pro", "deepseek-v4-flash")) {
+            return $value
+        }
+    }
+
+    return $UpstreamModel
+}
+
+function Write-ActiveModel {
+    param([string]$Value)
+
+    New-Item -ItemType Directory -Force -Path $ProxyStateDir | Out-Null
+    [System.IO.File]::WriteAllText($ActiveModelStateFile, $Value + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+}
+
+function Read-ProxyContextMode {
+    if (Test-Path -LiteralPath $ProxyContextModeStateFile) {
+        return (Get-Content -LiteralPath $ProxyContextModeStateFile -Raw).Trim()
+    }
+
+    return ""
+}
+
+function Write-ProxyContextMode {
+    param([string]$Value)
+
+    New-Item -ItemType Directory -Force -Path $ProxyStateDir | Out-Null
+    [System.IO.File]::WriteAllText($ProxyContextModeStateFile, $Value + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+}
+
+function Invoke-CliCommand {
+    switch ($CliCommand) {
+        "help" {
+            Write-Host "DeepSeek Codex CLI commands:"
+            Write-Host "  start-deepseek-cli.bat switch        Toggle Pro / Flash"
+            Write-Host "  start-deepseek-cli.bat switch-pro    Switch to DeepSeek V4 Pro"
+            Write-Host "  start-deepseek-cli.bat switch-flash  Switch to DeepSeek V4 Flash"
+            Write-Host "  start-deepseek-cli.bat model         Show active model"
+            Write-Host "  start-deepseek-cli.bat context       Show resident context status"
+            return $true
+        }
+        "model" {
+            Write-Host "Current model: $(Read-ActiveModel)"
+            return $true
+        }
+        "context" {
+            if (-not $ResidentContextEnabled) {
+                Write-Host "Resident project context: disabled"
+                Write-Host "Chat-window context from Codex remains active."
+            } elseif (Test-Path -LiteralPath $ResidentContextFile) {
+                Write-Host "Resident context: loaded"
+                Write-Host "  $ResidentContextFile"
+            } else {
+                Write-Host "Resident context: missing"
+            }
+            return $true
+        }
+        "switch" {
+            $current = Read-ActiveModel
+            $next = if ($current -eq "deepseek-v4-pro") { "deepseek-v4-flash" } else { "deepseek-v4-pro" }
+            Write-ActiveModel -Value $next
+            Write-Host "Switched to $next."
+            return $true
+        }
+        "switch-pro" {
+            Write-ActiveModel -Value "deepseek-v4-pro"
+            Write-Host "Switched to deepseek-v4-pro."
+            return $true
+        }
+        "switch-flash" {
+            Write-ActiveModel -Value "deepseek-v4-flash"
+            Write-Host "Switched to deepseek-v4-flash."
+            return $true
+        }
+    }
+
+    return $false
+}
+
+if ((-not $ResidentContextPathExplicit) -and (-not $SkipResidentContext)) {
+    $ResidentContextPath = Get-DefaultResidentContextPaths
+}
+$ResidentContextEnabled = (-not $SkipResidentContext) -and ($EnableResidentContext -or $ResidentContextPathExplicit -or $ResidentContextPath.Count -gt 0)
+
 Set-Location $ProjectRoot
 Write-IsolatedConfig
+
+if ($CliOnly -and $CliCommand) {
+    if (Invoke-CliCommand) {
+        return
+    }
+}
+
 Update-ResidentContext
 
 if ($PrepareOnly) {
@@ -386,7 +569,11 @@ if ($PrepareOnly) {
     Write-Host "  Sandbox: $SandboxMode"
     Write-Host "  Approval policy: $ApprovalPolicy"
     Write-Host "  Response language: $ResponseLanguage"
-    Write-Host "  Resident context: $ResidentContextFile"
+    if ($ResidentContextEnabled) {
+        Write-Host "  Resident project context: $ResidentContextFile"
+    } else {
+        Write-Host "  Resident project context: disabled; using Codex chat-window context"
+    }
     Write-Host "  Proxy: $BaseUrl"
     if (-not [string]::IsNullOrWhiteSpace($DeepSeekProxyUrl)) {
         Write-Host "  DeepSeek upstream proxy: $DeepSeekProxyUrl"
@@ -408,10 +595,18 @@ $env:CODEX_HOME = $CodexHome
 $env:LOG_REQUESTS = "1"
 $env:DEEPSEEK_RESPONSE_LANGUAGE = $ResponseLanguage
 New-Item -ItemType Directory -Force -Path $ProxyStateDir | Out-Null
-[System.IO.File]::WriteAllText($ActiveModelStateFile, $UpstreamModel + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+if (-not (Test-Path -LiteralPath $ActiveModelStateFile) -or -not $CliCommand) {
+    Write-ActiveModel -Value $UpstreamModel
+}
 $env:DEEPSEEK_ACTIVE_MODEL = $UpstreamModel
 $env:DEEPSEEK_ACTIVE_MODEL_STATE_FILE = $ActiveModelStateFile
-$env:DEEPSEEK_RESIDENT_CONTEXT_FILE = $ResidentContextFile
+if ($ResidentContextEnabled) {
+    $env:DEEPSEEK_RESIDENT_CONTEXT_FILE = $ResidentContextFile
+} else {
+    Remove-Item Env:\DEEPSEEK_RESIDENT_CONTEXT_FILE -ErrorAction SilentlyContinue
+}
+$CurrentProxyContextMode = if ($ResidentContextEnabled) { "resident-project-context" } else { "chat-window-context" }
+$ProxyContextModeChanged = (Read-ProxyContextMode) -ne $CurrentProxyContextMode
 Add-NoProxyEntry -Name "NO_PROXY"
 Add-NoProxyEntry -Name "no_proxy"
 if (-not [string]::IsNullOrWhiteSpace($DeepSeekProxyUrl)) {
@@ -426,7 +621,7 @@ if ($ProxyUri.Host -in @("127.0.0.1", "localhost", "::1")) {
     $env:DEEPSEEK_PROXY_PORT = [string]$ProxyUri.Port
 }
 
-if ((-not (Test-ProxyHealth)) -or $RestartProxy -or (-not [string]::IsNullOrWhiteSpace($DeepSeekProxyUrl))) {
+if ((-not (Test-ProxyHealth)) -or $RestartProxy -or $ProxyContextModeChanged -or (-not [string]::IsNullOrWhiteSpace($DeepSeekProxyUrl))) {
     Write-Host "Starting local DeepSeek Responses proxy on $BaseUrl..."
     if ($ProxyUri.Host -in @("127.0.0.1", "localhost", "::1")) {
         Stop-PortProcess -Port $ProxyUri.Port
@@ -453,6 +648,7 @@ if ((-not (Test-ProxyHealth)) -or $RestartProxy -or (-not [string]::IsNullOrWhit
     if (-not $healthy) {
         throw "DeepSeek proxy did not become healthy. Check $ProxyErrLog"
     }
+    Write-ProxyContextMode -Value $CurrentProxyContextMode
 }
 else {
     Write-Host "DeepSeek proxy is already healthy on $HealthUrl."
@@ -488,7 +684,11 @@ Write-Host "  Approval policy: $ApprovalPolicy"
 Write-Host "  Response language: $ResponseLanguage"
 Write-Host "  Reset VS Code state: $ResetVsCodeState"
 Write-Host "  Active model state: $ActiveModelStateFile"
-Write-Host "  Resident context: $ResidentContextFile"
+if ($ResidentContextEnabled) {
+    Write-Host "  Resident project context: $ResidentContextFile"
+} else {
+    Write-Host "  Resident project context: disabled; using Codex chat-window context"
+}
 Write-Host "  Proxy: $BaseUrl"
 Write-Host "  NO_PROXY: $env:NO_PROXY"
 if (-not [string]::IsNullOrWhiteSpace($DeepSeekProxyUrl)) {
