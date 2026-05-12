@@ -30,6 +30,22 @@ if /I "%FIRST_ARG%"=="context" (
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-deepseek-vscode.ps1" -CliOnly -CliCommand context
   goto done
 )
+if /I "%FIRST_ARG%"=="think" (
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-deepseek-vscode.ps1" -CliOnly -CliCommand think
+  goto done
+)
+if /I "%FIRST_ARG%"=="think-off" (
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-deepseek-vscode.ps1" -CliOnly -CliCommand think-off
+  goto done
+)
+if /I "%FIRST_ARG%"=="think-high" (
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-deepseek-vscode.ps1" -CliOnly -CliCommand think-high
+  goto done
+)
+if /I "%FIRST_ARG%"=="think-max" (
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-deepseek-vscode.ps1" -CliOnly -CliCommand think-max
+  goto done
+)
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-deepseek-vscode.ps1" -CliOnly %*
 

@@ -39,7 +39,7 @@ param(
 
     [switch]$CliOnly,
 
-    [ValidateSet("", "help", "switch", "switch-pro", "switch-flash", "model", "context")]
+    [ValidateSet("", "help", "switch", "switch-pro", "switch-flash", "model", "context", "think", "think-off", "think-high", "think-max")]
     [string]$CliCommand = "",
 
     [switch]$PrepareOnly
@@ -63,6 +63,7 @@ $ProxyOutLog = Join-Path $ProjectRoot "deepseek-vscode-proxy.out.log"
 $ProxyErrLog = Join-Path $ProjectRoot "deepseek-vscode-proxy.err.log"
 $ProxyStateDir = Join-Path $ProjectRoot ".deepseek"
 $ActiveModelStateFile = Join-Path $ProxyStateDir "active-model.txt"
+$ThinkingModeStateFile = Join-Path $ProxyStateDir "thinking-mode.txt"
 $ProxyContextModeStateFile = Join-Path $ProxyStateDir "proxy-context-mode.txt"
 $ResidentContextFile = Join-Path $ProxyStateDir "resident-context.md"
 $BaseUrl = $BaseUrl.TrimEnd("/")
@@ -291,7 +292,7 @@ function Write-IsolatedConfig {
 $configToml = @"
 model = "$UpstreamModel"
 model_provider = "deepseek"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "high"
 sandbox_mode = "$SandboxMode"
 approval_policy = "$ApprovalPolicy"
 
@@ -304,12 +305,12 @@ trust_level = "trusted"
 [profiles.deepseek-flash]
 model = "deepseek-v4-flash"
 model_provider = "deepseek"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "high"
 
 [profiles.deepseek-pro]
 model = "deepseek-v4-pro"
 model_provider = "deepseek"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "high"
 
 [model_providers.deepseek]
 name = "DeepSeek"
@@ -481,6 +482,31 @@ function Write-ActiveModel {
     [System.IO.File]::WriteAllText($ActiveModelStateFile, $Value + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
 }
 
+function Read-ThinkingMode {
+    if (Test-Path -LiteralPath $ThinkingModeStateFile) {
+        $value = (Get-Content -LiteralPath $ThinkingModeStateFile -Raw).Trim()
+        if ($value -in @("disabled", "high", "max")) {
+            return $value
+        }
+    }
+
+    return "disabled"
+}
+
+function Write-ThinkingMode {
+    param([string]$Value)
+
+    $normalized = switch ($Value) {
+        "off" { "disabled" }
+        "disabled" { "disabled" }
+        "max" { "max" }
+        default { "high" }
+    }
+
+    New-Item -ItemType Directory -Force -Path $ProxyStateDir | Out-Null
+    [System.IO.File]::WriteAllText($ThinkingModeStateFile, $normalized + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+}
+
 function Read-ProxyContextMode {
     if (Test-Path -LiteralPath $ProxyContextModeStateFile) {
         return (Get-Content -LiteralPath $ProxyContextModeStateFile -Raw).Trim()
@@ -505,10 +531,15 @@ function Invoke-CliCommand {
             Write-Host "  start-deepseek-cli.bat switch-flash  Switch to DeepSeek V4 Flash"
             Write-Host "  start-deepseek-cli.bat model         Show active model"
             Write-Host "  start-deepseek-cli.bat context       Show resident context status"
+            Write-Host "  start-deepseek-cli.bat think         Toggle thinking high / off"
+            Write-Host "  start-deepseek-cli.bat think-off     Disable thinking"
+            Write-Host "  start-deepseek-cli.bat think-high    Enable thinking high"
+            Write-Host "  start-deepseek-cli.bat think-max     Enable thinking max"
             return $true
         }
         "model" {
             Write-Host "Current model: $(Read-ActiveModel)"
+            Write-Host "Thinking mode: $(Read-ThinkingMode)"
             return $true
         }
         "context" {
@@ -521,6 +552,28 @@ function Invoke-CliCommand {
             } else {
                 Write-Host "Resident context: missing"
             }
+            return $true
+        }
+        "think" {
+            $current = Read-ThinkingMode
+            $next = if ($current -eq "disabled") { "high" } else { "disabled" }
+            Write-ThinkingMode -Value $next
+            Write-Host "Thinking mode: $next."
+            return $true
+        }
+        "think-off" {
+            Write-ThinkingMode -Value "disabled"
+            Write-Host "Thinking mode: disabled."
+            return $true
+        }
+        "think-high" {
+            Write-ThinkingMode -Value "high"
+            Write-Host "Thinking mode: high."
+            return $true
+        }
+        "think-max" {
+            Write-ThinkingMode -Value "max"
+            Write-Host "Thinking mode: max."
             return $true
         }
         "switch" {
@@ -598,8 +651,12 @@ New-Item -ItemType Directory -Force -Path $ProxyStateDir | Out-Null
 if (-not (Test-Path -LiteralPath $ActiveModelStateFile) -or -not $CliCommand) {
     Write-ActiveModel -Value $UpstreamModel
 }
+if (-not (Test-Path -LiteralPath $ThinkingModeStateFile)) {
+    Write-ThinkingMode -Value "disabled"
+}
 $env:DEEPSEEK_ACTIVE_MODEL = $UpstreamModel
 $env:DEEPSEEK_ACTIVE_MODEL_STATE_FILE = $ActiveModelStateFile
+$env:DEEPSEEK_THINKING_MODE_STATE_FILE = $ThinkingModeStateFile
 if ($ResidentContextEnabled) {
     $env:DEEPSEEK_RESIDENT_CONTEXT_FILE = $ResidentContextFile
 } else {
@@ -684,6 +741,7 @@ Write-Host "  Approval policy: $ApprovalPolicy"
 Write-Host "  Response language: $ResponseLanguage"
 Write-Host "  Reset VS Code state: $ResetVsCodeState"
 Write-Host "  Active model state: $ActiveModelStateFile"
+Write-Host "  Thinking mode: $(Read-ThinkingMode)"
 if ($ResidentContextEnabled) {
     Write-Host "  Resident project context: $ResidentContextFile"
 } else {

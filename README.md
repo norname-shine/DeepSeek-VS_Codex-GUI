@@ -127,10 +127,16 @@ flowchart LR
 /D-switch flash    切换到 DeepSeek V4 Flash
 /D-model           查看当前模型
 /D-context         查看常驻上下文状态
+/D-think           切换 thinking high / off
+/D-think high      开启 thinking high
+/D-think max       开启 thinking max
+/D-think off       关闭 thinking
 /D-help            查看可用指令
 ```
 
 这些指令由本地 DeepSeek 代理处理，不需要手动修改配置文件。
+
+说明：Codex CLI 状态栏里的 reasoning effort 是 Codex 自己的显示项，不是 DeepSeek 的原生档位。DeepSeek V4 的 thinking 由 `thinking.enabled/disabled` 和 `reasoning_effort=high|max` 控制；本项目默认关闭 thinking，适合日常工具调用，需要深度推理时再手动打开。
 
 ## 常驻上下文
 
@@ -213,6 +219,10 @@ Codex CLI 会优先拦截 `/xxx` 命令，所以不要在 CLI 交互界面里输
 .\start-deepseek-cli.bat switch-flash
 .\start-deepseek-cli.bat model
 .\start-deepseek-cli.bat context
+.\start-deepseek-cli.bat think
+.\start-deepseek-cli.bat think-high
+.\start-deepseek-cli.bat think-max
+.\start-deepseek-cli.bat think-off
 ```
 
 ## VS Code 命令面板
@@ -361,10 +371,16 @@ Available commands:
 /D-switch flash    Switch to DeepSeek V4 Flash
 /D-model           Show the active model
 /D-context         Show resident context status
+/D-think           Toggle thinking high / off
+/D-think high      Enable thinking high
+/D-think max       Enable thinking max
+/D-think off       Disable thinking
 /D-help            Show available commands
 ```
 
 These commands are handled by the local DeepSeek proxy, so you do not need to edit config files manually.
+
+Note: the reasoning effort shown by Codex CLI is a Codex-side display field, not a native DeepSeek tier. DeepSeek V4 thinking is controlled by `thinking.enabled/disabled` and `reasoning_effort=high|max`; this project keeps thinking disabled by default for regular tool-heavy agent work.
 
 ## Resident Context
 
@@ -446,6 +462,10 @@ Codex CLI intercepts `/xxx` commands before they reach the proxy, so do not type
 .\start-deepseek-cli.bat switch-flash
 .\start-deepseek-cli.bat model
 .\start-deepseek-cli.bat context
+.\start-deepseek-cli.bat think
+.\start-deepseek-cli.bat think-high
+.\start-deepseek-cli.bat think-max
+.\start-deepseek-cli.bat think-off
 ```
 
 ## VS Code Command Palette

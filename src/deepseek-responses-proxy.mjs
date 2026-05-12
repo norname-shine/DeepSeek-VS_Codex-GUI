@@ -10,10 +10,13 @@ const DEEPSEEK_UPSTREAM_PROXY = (process.env.DEEPSEEK_UPSTREAM_PROXY || process.
 const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || "deepseek-v4-pro";
 const DEFAULT_ACTIVE_MODEL = normalizeDeepSeekModel(process.env.DEEPSEEK_ACTIVE_MODEL || DEEPSEEK_MODEL) || "deepseek-v4-pro";
 const ACTIVE_MODEL_STATE_FILE = (process.env.DEEPSEEK_ACTIVE_MODEL_STATE_FILE || "").trim();
+const THINKING_MODE_STATE_FILE = (process.env.DEEPSEEK_THINKING_MODE_STATE_FILE || "").trim();
 const RESIDENT_CONTEXT_FILE = (process.env.DEEPSEEK_RESIDENT_CONTEXT_FILE || "").trim();
 const RESIDENT_CONTEXT_MAX_CHARS = Number(process.env.DEEPSEEK_RESIDENT_CONTEXT_MAX_CHARS || 600000);
 const LOG_REQUESTS = process.env.LOG_REQUESTS === "1";
-const DEEPSEEK_THINKING = process.env.DEEPSEEK_THINKING === "1" ? "enabled" : "disabled";
+const DEFAULT_THINKING_MODE = normalizeThinkingMode(
+  process.env.DEEPSEEK_THINKING_MODE || (process.env.DEEPSEEK_THINKING === "1" ? "high" : "disabled"),
+);
 const UPSTREAM_TIMEOUT_MS = Number(process.env.DEEPSEEK_UPSTREAM_TIMEOUT_MS || 120000);
 const UPSTREAM_RETRIES = Number(process.env.DEEPSEEK_UPSTREAM_RETRIES || 1);
 const RESPONSE_LANGUAGE = (process.env.DEEPSEEK_RESPONSE_LANGUAGE || "auto").trim().toLowerCase();
@@ -30,6 +33,7 @@ const MODEL_NOT_MAPPED_MESSAGE =
   "This model is not mapped by ds-codex. DeepSeek mode only maps GPT-5.2 to DeepSeek Flash and GPT-5.3-Codex to DeepSeek Pro. To use official GPT models with your logged-in Codex account quota, restore or switch back to the official OpenAI Codex provider.";
 const deepSeekDispatcher = DEEPSEEK_UPSTREAM_PROXY ? new ProxyAgent(DEEPSEEK_UPSTREAM_PROXY) : undefined;
 let activeModel = loadActiveModel();
+let activeThinkingMode = loadThinkingMode();
 
 function responseId() {
   return `resp_${randomUUID().replaceAll("-", "")}`;
@@ -51,10 +55,19 @@ function normalizeDeepSeekModel(requestedModel) {
   return null;
 }
 
+function normalizeThinkingMode(value) {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (["off", "none", "false", "disabled"].includes(normalized)) return "disabled";
+  if (["on", "true", "enabled", "high"].includes(normalized)) return "high";
+  if (normalized === "max") return "max";
+  return "disabled";
+}
+
 function resolveUpstreamModel(requestedModel) {
   const mapped = normalizeDeepSeekModel(requestedModel);
   if (!mapped) return null;
   activeModel = loadActiveModel();
+  activeThinkingMode = loadThinkingMode();
   return activeModel || mapped;
 }
 
@@ -78,6 +91,41 @@ function saveActiveModel(model) {
   } catch (error) {
     console.error(`[deepseek-proxy] failed to save active model state: ${error?.message || error}`);
   }
+}
+
+function loadThinkingMode() {
+  if (THINKING_MODE_STATE_FILE && existsSync(THINKING_MODE_STATE_FILE)) {
+    try {
+      return normalizeThinkingMode(readFileSync(THINKING_MODE_STATE_FILE, "utf8"));
+    } catch {
+      return DEFAULT_THINKING_MODE;
+    }
+  }
+  return DEFAULT_THINKING_MODE;
+}
+
+function saveThinkingMode(mode) {
+  activeThinkingMode = normalizeThinkingMode(mode);
+  if (!THINKING_MODE_STATE_FILE) return;
+  try {
+    writeFileSync(THINKING_MODE_STATE_FILE, `${activeThinkingMode}\n`, "utf8");
+  } catch (error) {
+    console.error(`[deepseek-proxy] failed to save thinking mode state: ${error?.message || error}`);
+  }
+}
+
+function switchThinkingModeFromCommand(text) {
+  const normalized = text.trim().toLowerCase();
+  if (/\b(max|think-max)\b/.test(normalized)) {
+    saveThinkingMode("max");
+  } else if (/\b(high|on|enabled|think-high)\b/.test(normalized)) {
+    saveThinkingMode("high");
+  } else if (/\b(off|disabled|none)\b/.test(normalized)) {
+    saveThinkingMode("disabled");
+  } else {
+    saveThinkingMode(activeThinkingMode === "disabled" ? "high" : "disabled");
+  }
+  return activeThinkingMode;
 }
 
 function toggleActiveModel() {
@@ -184,11 +232,11 @@ function getLatestUserText(body) {
 }
 
 function isDeepSeekCommand(text) {
-  return /^\/?d-(help|model|context|switch)\b/i.test(text.trim());
+  return /^\/?d-(help|model|context|switch|think)\b/i.test(text.trim());
 }
 
 function commandName(text) {
-  return text.trim().match(/^\/?d-(help|model|context|switch)\b/i)?.[0] || "";
+  return text.trim().match(/^\/?d-(help|model|context|switch|think)\b/i)?.[0] || "";
 }
 
 function handleDeepSeekCommand(text) {
@@ -204,7 +252,7 @@ function handleDeepSeekCommand(text) {
   if (/^\/?d-model\b/.test(command)) {
     return {
       model: activeModel,
-      text: `当前模型：${activeModel}。`,
+      text: `当前模型：${activeModel}。Thinking：${activeThinkingMode}。`,
     };
   }
 
@@ -213,6 +261,14 @@ function handleDeepSeekCommand(text) {
     return {
       model: activeModel,
       text: loaded ? "常驻上下文：已加载。" : "常驻上下文：未生成或为空。重新启动 DeepSeek Codex 可自动刷新。",
+    };
+  }
+
+  if (/^\/?d-think\b/.test(command)) {
+    const mode = switchThinkingModeFromCommand(text);
+    return {
+      model: activeModel,
+      text: `DeepSeek thinking：${mode}。`,
     };
   }
 
@@ -225,6 +281,8 @@ function handleDeepSeekCommand(text) {
       "/D-switch flash：切换到 Flash",
       "/D-model：查看当前模型",
       "/D-context：查看常驻上下文状态",
+      "/D-think：切换 thinking high / off",
+      "/D-think high|max|off：设置 thinking 模式",
     ].join("\n"),
   };
 }
@@ -390,7 +448,8 @@ function buildChatPayload(body, stream, upstreamModel) {
     model: upstreamModel,
     messages,
     stream,
-    thinking: { type: DEEPSEEK_THINKING },
+    thinking: { type: activeThinkingMode === "disabled" ? "disabled" : "enabled" },
+    reasoning_effort: activeThinkingMode === "disabled" ? undefined : activeThinkingMode,
     temperature: typeof body.temperature === "number" ? body.temperature : undefined,
     top_p: typeof body.top_p === "number" ? body.top_p : undefined,
     max_tokens: typeof body.max_output_tokens === "number" ? body.max_output_tokens : undefined,
