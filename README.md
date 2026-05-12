@@ -1,74 +1,116 @@
 # DeepSeek VS_Codex GUI
 
-[![中文](https://img.shields.io/badge/README-中文-blue)](#中文版)
-[![English](https://img.shields.io/badge/README-English-green)](#english-version)
+<p align="center">
+  <strong>Run DeepSeek inside the VS Code Codex workflow without touching your normal GPT / Codex setup.</strong>
+</p>
 
-DeepSeek Codex Bridge connects DeepSeek to the Codex experience in VS Code. It
-keeps the normal OpenAI/GPT Codex environment separate, while giving DeepSeek a
-stable local bridge, resident project context, and a few short chat commands.
+<p align="center">
+  <a href="#中文版">中文</a> ·
+  <a href="#english-version">English</a>
+</p>
+
+<p align="center">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%2B%20VS%20Code-blue" />
+  <img alt="Runtime" src="https://img.shields.io/badge/runtime-Node.js%20%2B%20PowerShell-green" />
+  <img alt="Models" src="https://img.shields.io/badge/models-DeepSeek%20V4%20Pro%20%2F%20Flash-purple" />
+  <img alt="Status" src="https://img.shields.io/badge/status-local%20bridge-orange" />
+</p>
 
 ---
 
 ## 中文版
 
-[English](#english-version)
+DeepSeek-VS_Codex GUI 是一个面向 VS Code Codex 工作流的本地兼容桥。它在不污染原有 OpenAI / GPT Codex 环境的前提下，为 DeepSeek 准备独立代理、隔离配置、常驻项目上下文和一组轻量聊天指令。
 
-### 它解决什么
+它适合希望继续使用 VS Code Codex 可视化体验，同时又想把 DeepSeek 接入本地开发流程的用户。
 
-Codex 的 VS Code 桌面体验很好，但非官方模型接入时常见几个问题：
+## 目录
 
-- 默认上下文不一定稳定传给第三方模型。
-- 模型切换需要改配置或重启，流程偏重。
-- 网络代理需要和官方 GPT 使用路径分开。
-- 不希望影响原本的 Codex / GPT 环境。
+- [项目简介](#项目简介)
+- [核心目标](#核心目标)
+- [它解决什么问题](#它解决什么问题)
+- [核心特性](#核心特性)
+- [工作方式](#工作方式)
+- [快速开始](#快速开始)
+- [聊天框指令](#聊天框指令)
+- [常驻上下文](#常驻上下文)
+- [网络代理](#网络代理)
+- [本地 CLI](#本地-cli)
+- [VS Code 命令面板](#vs-code-命令面板)
+- [项目结构](#项目结构)
+- [能力边界](#能力边界)
+- [English Version](#english-version)
 
-这个项目提供一套隔离的 DeepSeek Codex 工作区：启动时准备本地代理、隔离配置、常驻上下文，并保留 VS Code Codex 的可视化工作流。
+## 项目简介
 
-### 为什么保留 VS Code Codex 桌面端
+本项目是 DeepSeek 与 CodeX 双端互通的转换中转项目。核心能力是让用户可以通过 CodeX 端直接调用、联动使用 DeepSeek 模型能力，打通两大模型生态之间的调用壁垒。
 
-相比只用 CLI，VS Code Codex 桌面端更适合真实项目开发：
+## 核心目标
 
-- **文件窗口联动**：对话、文件、diff、跳转在同一个工作区里。
-- **拖拽上下文**：文件、图片和选区可以直接交给 Codex 面板。
-- **引导式交互**：保留 Codex 的任务引导、权限提示和会话能力。
-- **插件 / MCP 入口**：会同步主 Codex 配置里的插件、marketplace、MCP 和 connector 配置块。最终可用工具以 Codex 面板实际显示为准。
+依托 CodeX 作为入口载体，用户无需单独部署、单独配置 DeepSeek 独立服务，即可在 CodeX 工作流中无缝调用 DeepSeek 模型，实现双模型协同工作、互相补位。
 
-### 功能
+## 它解决什么问题
 
-- DeepSeek V4 Pro / Flash。
-- 聊天框短指令：`/D-switch`、`/D-model`、`/D-context`、`/D-help`。
-- 默认常驻上下文：启动时生成 `.deepseek/resident-context.md`，每轮请求自动注入。
-- 默认中文跟随：中文提问优先用简体中文回答。
-- DeepSeek 独立代理出口，不影响正常 GPT / Codex 使用。
-- VS Code 隔离 profile，不污染主环境。
-- 保留本地 Codex CLI 入口。
-- 保留 VS Code launcher extension 安装方式。
+Codex 的 VS Code 桌面体验适合真实项目开发，但接入第三方模型时常见几个摩擦点：
 
-### 快速开始
+| 问题 | DeepSeek-VS_Codex GUI 的处理方式 |
+| --- | --- |
+| 上下文不稳定 | 启动时生成常驻项目上下文，并在请求时自动注入 |
+| 模型切换麻烦 | 提供 `/D-switch` 等聊天框短指令 |
+| 代理路径混杂 | DeepSeek 上游请求走独立代理配置 |
+| 不想影响原 Codex 环境 | 使用隔离 VS Code profile 和隔离 Codex 配置 |
+| CLI 调用偏黑盒 | 保留 VS Code Codex 面板、文件、diff、跳转和会话体验 |
 
-1. 设置 DeepSeek API Key。
+## 核心特性
 
-   ```powershell
-   [Environment]::SetEnvironmentVariable("DEEPSEEK_API_KEY", "your-deepseek-api-key", "User")
-   ```
+- **隔离运行**：独立 VS Code profile 与 Codex 配置，不污染正常 GPT / Codex 环境。
+- **DeepSeek 模型切换**：支持 DeepSeek V4 Pro / Flash，并可通过聊天框指令切换。
+- **常驻项目上下文**：启动时扫描项目文件，生成 `.deepseek/resident-context.md`，为每轮请求提供项目背景。
+- **独立网络代理**：DeepSeek 上游请求可单独配置代理，不影响原有 OpenAI / GPT 请求路径。
+- **VS Code Codex 工作流保留**：继续使用 Codex 面板、文件上下文、选区、diff、跳转和任务交互体验。
+- **本地 CLI 入口**：需要命令行模式时，可通过独立脚本启动本地 Codex CLI。
+- **Launcher Extension**：可安装本地 VS Code launcher extension，通过命令面板打开隔离窗口。
 
-2. 启动隔离 VS Code。
+## 工作方式
 
-   ```powershell
-   .\start-deepseek-vscode.bat
-   ```
+```mermaid
+flowchart LR
+  A[User in VS Code Codex Panel] --> B[Isolated VS Code Profile]
+  B --> C[Local DeepSeek Responses Proxy]
+  C --> D[Resident Project Context]
+  C --> E[Dedicated DeepSeek Upstream Proxy]
+  E --> F[DeepSeek V4 Pro / Flash]
 
-3. 在新打开的 VS Code 中使用 Codex 面板。
+  B -. keeps separate .-> G[Normal GPT / Codex Setup]
+```
 
-启动脚本默认会完成：
+启动脚本会完成以下准备：
 
-- 生成隔离 Codex 配置。
-- 同步主 Codex 的插件 / MCP 相关配置块。
-- 刷新常驻上下文。
-- 启动本地 DeepSeek 代理。
-- 打开隔离 VS Code 窗口。
+1. 生成隔离 Codex 配置。
+2. 同步主 Codex 配置中的插件、MCP、marketplace、connector 配置块。
+3. 刷新常驻项目上下文。
+4. 启动本地 DeepSeek 兼容代理。
+5. 打开隔离 VS Code 窗口。
 
-### 聊天框指令
+## 快速开始
+
+### 1. 设置 DeepSeek API Key
+
+```powershell
+[Environment]::SetEnvironmentVariable("DEEPSEEK_API_KEY", "your-deepseek-api-key", "User")
+```
+
+### 2. 启动隔离 VS Code
+
+```powershell
+.\start-deepseek-vscode.bat
+```
+
+### 3. 在新窗口使用 Codex 面板
+
+打开后的窗口使用隔离 profile。你可以像平时一样在 Codex 面板里发送任务、附加文件、查看 diff 或继续项目会话。
+
+## 聊天框指令
 
 在 Codex 聊天框输入：
 
@@ -84,13 +126,14 @@ Codex 的 VS Code 桌面体验很好，但非官方模型接入时常见几个�
 /D-switch flash    切换到 DeepSeek V4 Flash
 /D-model           查看当前模型
 /D-context         查看常驻上下文状态
+/D-help            查看可用指令
 ```
 
-这些指令由本地 DeepSeek 代理处理，不需要手动改配置文件。
+这些指令由本地 DeepSeek 代理处理，不需要手动修改配置文件。
 
-### 常驻上下文
+## 常驻上下文
 
-常驻上下文默认开启。它不是一次性问答，而是给 DeepSeek Codex 的每轮请求提供项目背景。
+常驻上下文默认开启。它不是一次性问答内容，而是为 DeepSeek Codex 的每轮请求提供项目背景。
 
 默认扫描：
 
@@ -101,45 +144,47 @@ scripts
 vscode-extension
 ```
 
-生成：
+生成文件：
 
 ```text
 .deepseek/resident-context.md
 ```
 
-这个文件不会提交到仓库。需要扩大或缩小范围时，可以调整启动参数：
+该文件不会提交到仓库。
+
+### 自定义扫描范围
 
 ```powershell
 .\start-deepseek-vscode.bat -ResidentContextPath README.md,src,scripts
 ```
 
-关闭自动刷新：
+### 跳过自动刷新
 
 ```powershell
 .\start-deepseek-vscode.bat -SkipResidentContext
 ```
 
-### 网络代理
+## 网络代理
 
-如果访问 DeepSeek 需要走独立代理：
+如果 DeepSeek 上游请求需要走独立代理：
 
 ```powershell
 .\start-deepseek-vscode.bat -DeepSeekProxyUrl http://127.0.0.1:7890
 ```
 
-这个代理只用于 DeepSeek 上游请求，不影响正常 GPT / Codex 环境。
+该代理只用于 DeepSeek 上游请求，不影响正常 GPT / Codex 使用路径。
 
-### 本地 CLI
+## 本地 CLI
 
-只想用本地 Codex CLI 时：
+只想使用本地 Codex CLI 时：
 
 ```powershell
 .\start-deepseek-cli.bat
 ```
 
-CLI 和 VS Code 共用同一套隔离配置、代理和常驻上下文。
+CLI 与 VS Code 共用同一套隔离配置、代理和常驻上下文。
 
-### VS Code 命令面板
+## VS Code 命令面板
 
 安装本地 launcher extension：
 
@@ -147,7 +192,7 @@ CLI 和 VS Code 共用同一套隔离配置、代理和常驻上下文。
 .\install-vscode-extension.bat
 ```
 
-重启 VS Code 后可用：
+重启 VS Code 后，可在命令面板中使用：
 
 ```text
 DeepSeek Codex: Open Isolated Window
@@ -155,7 +200,7 @@ DeepSeek Codex: Open Isolated Flash
 DeepSeek Codex: Open Isolated Pro
 ```
 
-### 文件结构
+## 项目结构
 
 ```text
 src/deepseek-responses-proxy.mjs      本地 Responses 兼容代理
@@ -167,73 +212,108 @@ start-deepseek-cli.bat                CLI 一键入口
 install-vscode-extension.bat          安装本地 launcher extension
 ```
 
-### 能力边界
+## 能力边界
 
 - 这是兼容桥，不是 Codex 官方原生 DeepSeek provider。
 - 原生工作流卡片、diff 卡片和工具事件显示由官方 Codex 扩展控制。
-- 插件 / MCP 配置可以同步，但最终可用性以 Codex 面板实际工具列表为准。
-- 常驻上下文是项目背景，不替代当前用户明确给出的文件和指令。
+- 插件、MCP、marketplace、connector 配置可以同步，但最终可用性以 Codex 面板实际显示为准。
+- 常驻上下文是项目背景，不替代用户当前明确给出的文件、选区和任务指令。
+- 当前快速启动路径以 Windows、PowerShell 和 VS Code 工作流为主。
 
----
+## 适合谁使用
+
+- 想在 VS Code Codex 桌面体验中接入 DeepSeek 的开发者。
+- 想让 GPT / Codex 与 DeepSeek 保持隔离、并行使用的用户。
+- 希望为项目准备稳定常驻上下文，而不是每轮重复粘贴背景的人。
+- 需要为 DeepSeek 单独配置代理出口的人。
+
+## 贡献
+
+欢迎提交 Issue 或 Pull Request。反馈问题时，建议附上：
+
+- 操作系统与 PowerShell 版本。
+- VS Code 与 Codex 扩展版本。
+- 使用的启动脚本与参数。
+- 本地代理日志或错误片段。
+- 是否启用了 DeepSeek 独立代理。
 
 ## English Version
 
-[中文](#中文版)
+DeepSeek-VS_Codex GUI is a local compatibility bridge for the VS Code Codex workflow. It keeps your normal OpenAI / GPT Codex setup separate while giving DeepSeek an isolated local proxy, a dedicated config path, resident project context, and a few lightweight chat commands.
 
-### What It Solves
+It is designed for users who want to keep the VS Code Codex desktop experience while routing selected work through DeepSeek.
 
-The VS Code Codex desktop experience is useful, but third-party model bridges
-often run into practical friction:
+## Table of Contents
 
-- Default context may not reach the model reliably.
-- Switching models through config files is slow.
-- DeepSeek network routing should be separate from the normal GPT path.
-- The normal Codex / GPT setup should remain untouched.
+- [What It Solves](#what-it-solves)
+- [Features](#features)
+- [How It Works](#how-it-works)
+- [Quick Start](#quick-start)
+- [Chat Commands](#chat-commands)
+- [Resident Context](#resident-context)
+- [Network Proxy](#network-proxy)
+- [Local CLI](#local-cli)
+- [VS Code Command Palette](#vs-code-command-palette)
+- [Project Layout](#project-layout)
+- [Limits](#limits)
+- [Contributing](#contributing)
 
-This project provides an isolated DeepSeek Codex workspace. It prepares a local
-proxy, isolated config, resident context, and the VS Code Codex workflow in one
-startup path.
+## What It Solves
 
-### Why Keep VS Code Codex Desktop
+The VS Code Codex desktop workflow is useful for real project work, but third-party model bridges often introduce friction:
 
-Compared with CLI-only usage, VS Code Codex is better for project work:
+| Problem | How this project handles it |
+| --- | --- |
+| Context may not reach the model reliably | Generates resident project context and injects it into requests |
+| Model switching is slow | Adds chat commands such as `/D-switch` |
+| Network routing should be separate | Allows a dedicated DeepSeek upstream proxy |
+| Normal Codex setup should stay untouched | Uses an isolated VS Code profile and Codex config |
+| CLI-only usage feels opaque | Keeps the Codex panel, files, diffs, jumps, and session flow |
 
-- **Linked file windows**: chat, files, diffs, and jumps stay in one workspace.
-- **Drag-and-drop context**: files, images, and selections can be sent to Codex.
-- **Guided interaction**: Codex task guidance, permissions, and session behavior remain available.
-- **Plugin / MCP entry points**: plugin, marketplace, MCP, and connector config blocks are synced from the main Codex config. Final availability depends on what the Codex panel exposes.
+## Features
 
-### Features
+- **Isolated runtime**: separate VS Code profile and Codex config.
+- **DeepSeek model switching**: DeepSeek V4 Pro / Flash with chat-based commands.
+- **Resident project context**: generates `.deepseek/resident-context.md` on startup and uses it as project background.
+- **Dedicated upstream proxy**: DeepSeek traffic can use a separate proxy path.
+- **VS Code Codex workflow**: keep chat, files, selections, diffs, navigation, and guided task interaction in one workspace.
+- **Local CLI entrypoint**: use the same isolated environment from the command line.
+- **Launcher extension**: open isolated windows from the VS Code command palette.
 
-- DeepSeek V4 Pro / Flash.
-- Chat commands: `/D-switch`, `/D-model`, `/D-context`, `/D-help`.
-- Resident context generated on startup and injected into every request.
-- Chinese language following by default.
-- Dedicated DeepSeek upstream proxy.
-- Isolated VS Code profile.
-- Local Codex CLI entrypoint.
-- Local VS Code launcher extension installer.
+## How It Works
 
-### Quick Start
+```mermaid
+flowchart LR
+  A[User in VS Code Codex Panel] --> B[Isolated VS Code Profile]
+  B --> C[Local DeepSeek Responses Proxy]
+  C --> D[Resident Project Context]
+  C --> E[Dedicated DeepSeek Upstream Proxy]
+  E --> F[DeepSeek V4 Pro / Flash]
 
-1. Set the DeepSeek API key.
+  B -. keeps separate .-> G[Normal GPT / Codex Setup]
+```
 
-   ```powershell
-   [Environment]::SetEnvironmentVariable("DEEPSEEK_API_KEY", "your-deepseek-api-key", "User")
-   ```
+On startup, the launcher prepares the isolated Codex config, syncs plugin / MCP / marketplace / connector config blocks, refreshes resident context, starts the local DeepSeek proxy, and opens an isolated VS Code window.
 
-2. Launch isolated VS Code.
+## Quick Start
 
-   ```powershell
-   .\start-deepseek-vscode.bat
-   ```
+### 1. Set the DeepSeek API key
 
-3. Use the Codex panel in the new VS Code window.
+```powershell
+[Environment]::SetEnvironmentVariable("DEEPSEEK_API_KEY", "your-deepseek-api-key", "User")
+```
 
-Startup prepares the isolated Codex config, syncs plugin / MCP config blocks,
-refreshes resident context, starts the local proxy, and opens VS Code.
+### 2. Launch isolated VS Code
 
-### Chat Commands
+```powershell
+.\start-deepseek-vscode.bat
+```
+
+### 3. Use the Codex panel
+
+Use the Codex panel in the new isolated VS Code window as you normally would: send tasks, attach files, inspect diffs, and continue project sessions.
+
+## Chat Commands
 
 Type this in the Codex chat:
 
@@ -241,7 +321,7 @@ Type this in the Codex chat:
 /D-help
 ```
 
-Commands:
+Available commands:
 
 ```text
 /D-switch          Toggle Pro / Flash
@@ -249,12 +329,14 @@ Commands:
 /D-switch flash    Switch to DeepSeek V4 Flash
 /D-model           Show the active model
 /D-context         Show resident context status
+/D-help            Show available commands
 ```
 
-### Resident Context
+These commands are handled by the local DeepSeek proxy, so you do not need to edit config files manually.
 
-Resident context is enabled by default. It provides project background to every
-DeepSeek Codex request.
+## Resident Context
+
+Resident context is enabled by default. It is not a one-off prompt. It provides project background to every DeepSeek Codex request.
 
 Default inputs:
 
@@ -271,19 +353,21 @@ Generated file:
 .deepseek/resident-context.md
 ```
 
-Customize the scope:
+This file is not committed to the repository.
+
+### Customize the scope
 
 ```powershell
 .\start-deepseek-vscode.bat -ResidentContextPath README.md,src,scripts
 ```
 
-Disable refresh:
+### Skip refresh
 
 ```powershell
 .\start-deepseek-vscode.bat -SkipResidentContext
 ```
 
-### Network Proxy
+## Network Proxy
 
 Use a dedicated upstream proxy for DeepSeek:
 
@@ -293,15 +377,15 @@ Use a dedicated upstream proxy for DeepSeek:
 
 This only affects DeepSeek upstream requests.
 
-### Local CLI
+## Local CLI
 
 ```powershell
 .\start-deepseek-cli.bat
 ```
 
-CLI and VS Code share the same isolated config, proxy, and resident context.
+The CLI and VS Code entrypoints share the same isolated config, proxy, and resident context.
 
-### VS Code Command Palette
+## VS Code Command Palette
 
 Install the local launcher extension:
 
@@ -309,7 +393,7 @@ Install the local launcher extension:
 .\install-vscode-extension.bat
 ```
 
-Available commands:
+After restarting VS Code, use:
 
 ```text
 DeepSeek Codex: Open Isolated Window
@@ -317,7 +401,7 @@ DeepSeek Codex: Open Isolated Flash
 DeepSeek Codex: Open Isolated Pro
 ```
 
-### Project Layout
+## Project Layout
 
 ```text
 src/deepseek-responses-proxy.mjs      Local Responses-compatible proxy
@@ -329,9 +413,27 @@ start-deepseek-cli.bat                CLI entrypoint
 install-vscode-extension.bat          Launcher extension installer
 ```
 
-### Limits
+## Limits
 
 - This is a compatibility bridge, not a native Codex DeepSeek provider.
 - Native workflow cards, diff cards, and tool event rendering are controlled by the official Codex extension.
-- Plugin / MCP config can be synced, but final tool availability depends on the Codex panel.
-- Resident context is project background; explicit user instructions and attached files still take priority.
+- Plugin, MCP, marketplace, and connector config blocks can be synced, but final availability depends on what the Codex panel exposes.
+- Resident context is project background; explicit user instructions, attached files, and selections still take priority.
+- The current quick-start path is centered on Windows, PowerShell, and VS Code.
+
+## Who This Is For
+
+- Developers who want to use DeepSeek inside the VS Code Codex desktop workflow.
+- Users who want DeepSeek and normal GPT / Codex environments to stay isolated.
+- Projects that benefit from reusable resident context instead of repeated prompt setup.
+- Users who need a dedicated proxy path for DeepSeek traffic.
+
+## Contributing
+
+Issues and pull requests are welcome. When reporting a problem, please include:
+
+- Operating system and PowerShell version.
+- VS Code and Codex extension versions.
+- Startup script and parameters used.
+- Relevant local proxy logs or error snippets.
+- Whether a dedicated DeepSeek proxy was enabled.
