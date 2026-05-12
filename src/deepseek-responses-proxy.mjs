@@ -114,13 +114,12 @@ function saveThinkingMode(mode) {
   }
 }
 
-function switchThinkingModeFromCommand(text) {
-  const normalized = text.trim().toLowerCase();
-  if (/\b(max|think-max)\b/.test(normalized)) {
+function switchThinkingMode(mode = "") {
+  if (mode === "max") {
     saveThinkingMode("max");
-  } else if (/\b(high|on|enabled|think-high)\b/.test(normalized)) {
+  } else if (["high", "on", "enabled"].includes(mode)) {
     saveThinkingMode("high");
-  } else if (/\b(off|disabled|none)\b/.test(normalized)) {
+  } else if (["off", "disabled", "none"].includes(mode)) {
     saveThinkingMode("disabled");
   } else {
     saveThinkingMode(activeThinkingMode === "disabled" ? "high" : "disabled");
@@ -231,32 +230,84 @@ function getLatestUserText(body) {
   return "";
 }
 
+function normalizeCommandText(text) {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/^\/+/, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseDeepSeekCommand(text) {
+  const normalized = normalizeCommandText(text);
+  if (!normalized) return null;
+
+  const withoutPrefix = normalized.startsWith("d ") ? normalized.slice(2).trim() : normalized;
+  const tokens = withoutPrefix.split(" ").filter(Boolean);
+  const [name, ...args] = tokens;
+  if (!name) return null;
+
+  if (["help", "model", "context"].includes(name) && args.length === 0) {
+    return { name, args: [] };
+  }
+
+  if (name === "switch") {
+    const filteredArgs = args.filter((arg) => arg !== "to");
+    if (filteredArgs.length === 0) return { name: "switch", args: [] };
+    const joinedArgs = filteredArgs.join(" ");
+    if (["pro", "v4 pro", "deepseek v4 pro"].includes(joinedArgs)) {
+      return { name: "switch", args: ["pro"] };
+    }
+    if (["flash", "v4 flash", "deepseek v4 flash"].includes(joinedArgs)) {
+      return { name: "switch", args: ["flash"] };
+    }
+    return null;
+  }
+
+  if (name === "think" || name === "thinking") {
+    if (args.length === 0) return { name: "think", args: [] };
+    if (args.length === 1 && ["high", "max", "off", "on", "enabled", "disabled", "none"].includes(args[0])) {
+      return { name: "think", args: [args[0]] };
+    }
+    return null;
+  }
+
+  return null;
+}
+
 function isDeepSeekCommand(text) {
-  return /^\/?d-(help|model|context|switch|think)\b/i.test(text.trim());
+  return Boolean(parseDeepSeekCommand(text));
 }
 
 function commandName(text) {
-  return text.trim().match(/^\/?d-(help|model|context|switch|think)\b/i)?.[0] || "";
+  const parsed = parseDeepSeekCommand(text);
+  return parsed ? [parsed.name, ...parsed.args].join(" ") : "";
 }
 
 function handleDeepSeekCommand(text) {
-  const command = text.trim().toLowerCase();
-  if (/^\/?d-switch\b/.test(command)) {
-    const switchedModel = switchActiveModelFromCommand(text);
+  const parsed = parseDeepSeekCommand(text);
+  if (parsed?.name === "switch") {
+    const switchedModel = parsed.args[0] === "pro"
+      ? switchActiveModelFromCommand("pro")
+      : parsed.args[0] === "flash"
+        ? switchActiveModelFromCommand("flash")
+        : switchActiveModelFromCommand("");
     return {
       model: switchedModel,
       text: `已切换成 ${switchedModel}。`,
     };
   }
 
-  if (/^\/?d-model\b/.test(command)) {
+  if (parsed?.name === "model") {
     return {
       model: activeModel,
       text: `当前模型：${activeModel}。Thinking：${activeThinkingMode}。`,
     };
   }
 
-  if (/^\/?d-context\b/.test(command)) {
+  if (parsed?.name === "context") {
     const loaded = Boolean(readResidentContext());
     return {
       model: activeModel,
@@ -264,8 +315,8 @@ function handleDeepSeekCommand(text) {
     };
   }
 
-  if (/^\/?d-think\b/.test(command)) {
-    const mode = switchThinkingModeFromCommand(text);
+  if (parsed?.name === "think") {
+    const mode = switchThinkingMode(parsed.args[0] || "");
     return {
       model: activeModel,
       text: `DeepSeek thinking：${mode}。`,

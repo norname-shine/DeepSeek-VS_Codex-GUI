@@ -5,12 +5,21 @@ chcp 65001 >nul
 pushd "%~dp0" >nul
 
 set "FIRST_ARG=%~1"
+set "SECOND_ARG=%~2"
 
 if /I "%FIRST_ARG%"=="help" (
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-deepseek-vscode.ps1" -CliOnly -CliCommand help
   goto done
 )
 if /I "%FIRST_ARG%"=="switch" (
+  if /I "%SECOND_ARG%"=="pro" (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-deepseek-vscode.ps1" -CliOnly -CliCommand switch-pro
+    goto done
+  )
+  if /I "%SECOND_ARG%"=="flash" (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-deepseek-vscode.ps1" -CliOnly -CliCommand switch-flash
+    goto done
+  )
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-deepseek-vscode.ps1" -CliOnly -CliCommand switch
   goto done
 )
@@ -31,6 +40,18 @@ if /I "%FIRST_ARG%"=="context" (
   goto done
 )
 if /I "%FIRST_ARG%"=="think" (
+  if /I "%SECOND_ARG%"=="off" (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-deepseek-vscode.ps1" -CliOnly -CliCommand think-off
+    goto done
+  )
+  if /I "%SECOND_ARG%"=="high" (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-deepseek-vscode.ps1" -CliOnly -CliCommand think-high
+    goto done
+  )
+  if /I "%SECOND_ARG%"=="max" (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-deepseek-vscode.ps1" -CliOnly -CliCommand think-max
+    goto done
+  )
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-deepseek-vscode.ps1" -CliOnly -CliCommand think
   goto done
 )
