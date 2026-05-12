@@ -488,6 +488,37 @@ function responsesToolsToChatTools(tools) {
   return chatTools.length ? chatTools : undefined;
 }
 
+function inputContainsToolWorkflow(input) {
+  if (!Array.isArray(input)) return false;
+  return input.some((item) => {
+    if (!item || typeof item !== "object") return false;
+    const type = item.type || "";
+    if (
+      type === "function_call" ||
+      type === "function_call_output" ||
+      type === "tool_call" ||
+      type === "tool_result"
+    ) {
+      return true;
+    }
+    if (Array.isArray(item.content)) {
+      return item.content.some((part) => {
+        const partType = part?.type || "";
+        return partType === "function_call" || partType === "function_call_output" || partType === "tool_result";
+      });
+    }
+    return false;
+  });
+}
+
+function isToolWorkflowRequest(body, chatTools) {
+  return Boolean(
+    (Array.isArray(chatTools) && chatTools.length > 0) ||
+      (Array.isArray(body?.tools) && body.tools.length > 0) ||
+      inputContainsToolWorkflow(body?.input),
+  );
+}
+
 function buildChatPayload(body, stream, upstreamModel) {
   const messages = responseInputToMessages(body, upstreamModel);
   if (messages.length === 0) {
@@ -495,12 +526,16 @@ function buildChatPayload(body, stream, upstreamModel) {
   }
 
   const tools = responsesToolsToChatTools(body.tools);
+  const effectiveThinkingMode = isToolWorkflowRequest(body, tools) ? "disabled" : activeThinkingMode;
+  if (activeThinkingMode !== "disabled" && effectiveThinkingMode === "disabled") {
+    console.error("[deepseek-proxy] thinking disabled for tool workflow request");
+  }
   const payload = {
     model: upstreamModel,
     messages,
     stream,
-    thinking: { type: activeThinkingMode === "disabled" ? "disabled" : "enabled" },
-    reasoning_effort: activeThinkingMode === "disabled" ? undefined : activeThinkingMode,
+    thinking: { type: effectiveThinkingMode === "disabled" ? "disabled" : "enabled" },
+    reasoning_effort: effectiveThinkingMode === "disabled" ? undefined : effectiveThinkingMode,
     temperature: typeof body.temperature === "number" ? body.temperature : undefined,
     top_p: typeof body.top_p === "number" ? body.top_p : undefined,
     max_tokens: typeof body.max_output_tokens === "number" ? body.max_output_tokens : undefined,
