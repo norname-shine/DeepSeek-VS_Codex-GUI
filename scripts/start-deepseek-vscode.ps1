@@ -65,6 +65,8 @@ $ProxyStateDir = Join-Path $ProjectRoot ".deepseek"
 $ActiveModelStateFile = Join-Path $ProxyStateDir "active-model.txt"
 $ThinkingModeStateFile = Join-Path $ProxyStateDir "thinking-mode.txt"
 $ProxyContextModeStateFile = Join-Path $ProxyStateDir "proxy-context-mode.txt"
+$ProxyCodeHashStateFile = Join-Path $ProxyStateDir "proxy-code.sha256"
+$ProxyScriptPath = Join-Path $ProjectRoot "src\deepseek-responses-proxy.mjs"
 $ResidentContextFile = Join-Path $ProxyStateDir "resident-context.md"
 $BaseUrl = $BaseUrl.TrimEnd("/")
 $DeepSeekProxyUrl = $DeepSeekProxyUrl.Trim()
@@ -544,6 +546,29 @@ function Write-ProxyContextMode {
     [System.IO.File]::WriteAllText($ProxyContextModeStateFile, $Value + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
 }
 
+function Get-ProxyCodeHash {
+    if (-not (Test-Path -LiteralPath $ProxyScriptPath)) {
+        return ""
+    }
+
+    return (Get-FileHash -LiteralPath $ProxyScriptPath -Algorithm SHA256).Hash
+}
+
+function Read-ProxyCodeHash {
+    if (Test-Path -LiteralPath $ProxyCodeHashStateFile) {
+        return (Get-Content -LiteralPath $ProxyCodeHashStateFile -Raw).Trim()
+    }
+
+    return ""
+}
+
+function Write-ProxyCodeHash {
+    param([string]$Value)
+
+    New-Item -ItemType Directory -Force -Path $ProxyStateDir | Out-Null
+    [System.IO.File]::WriteAllText($ProxyCodeHashStateFile, $Value + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+}
+
 function Invoke-CliCommand {
     switch ($CliCommand) {
         "help" {
@@ -699,6 +724,8 @@ if ($ResidentContextEnabled) {
 }
 $CurrentProxyContextMode = if ($ResidentContextEnabled) { "resident-project-context" } else { "chat-window-context" }
 $ProxyContextModeChanged = (Read-ProxyContextMode) -ne $CurrentProxyContextMode
+$CurrentProxyCodeHash = Get-ProxyCodeHash
+$ProxyCodeChanged = $CurrentProxyCodeHash -and ((Read-ProxyCodeHash) -ne $CurrentProxyCodeHash)
 Add-NoProxyEntry -Name "NO_PROXY"
 Add-NoProxyEntry -Name "no_proxy"
 if (-not [string]::IsNullOrWhiteSpace($DeepSeekProxyUrl)) {
@@ -713,7 +740,7 @@ if ($ProxyUri.Host -in @("127.0.0.1", "localhost", "::1")) {
     $env:DEEPSEEK_PROXY_PORT = [string]$ProxyUri.Port
 }
 
-if ((-not (Test-ProxyHealth)) -or $RestartProxy -or $ProxyContextModeChanged -or (-not [string]::IsNullOrWhiteSpace($DeepSeekProxyUrl))) {
+if ((-not (Test-ProxyHealth)) -or $RestartProxy -or $ProxyContextModeChanged -or $ProxyCodeChanged -or (-not [string]::IsNullOrWhiteSpace($DeepSeekProxyUrl))) {
     Write-Host "Starting local DeepSeek Responses proxy on $BaseUrl..."
     if ($ProxyUri.Host -in @("127.0.0.1", "localhost", "::1")) {
         Stop-PortProcess -Port $ProxyUri.Port
@@ -741,6 +768,9 @@ if ((-not (Test-ProxyHealth)) -or $RestartProxy -or $ProxyContextModeChanged -or
         throw "DeepSeek proxy did not become healthy. Check $ProxyErrLog"
     }
     Write-ProxyContextMode -Value $CurrentProxyContextMode
+    if ($CurrentProxyCodeHash) {
+        Write-ProxyCodeHash -Value $CurrentProxyCodeHash
+    }
 }
 else {
     Write-Host "DeepSeek proxy is already healthy on $HealthUrl."

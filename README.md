@@ -230,6 +230,7 @@ Codex CLI 会优先拦截 `/xxx` 命令，所以不要在 CLI 交互界面里输
 在 CLI 交互会话里，也可以直接发送 `switch flash`、`switch pro`、`think max`、`think high` 或 `think off`；本地代理会把它们当成控制指令，不会转给模型生成普通回答。等价写法如 `/D-switch flash`、`D switch flash`、`switch-flash` 会走同一套解析逻辑。
 
 正在运行中的 Codex CLI 底部状态栏不会热刷新，所以它可能仍显示启动时的模型名。实际请求会由本地代理按最新状态文件路由；新开 CLI / VS Code 会读取更新后的隔离配置。
+启动脚本会在代理代码变化时自动重启本地代理。如果已打开的 CLI 仍把 `help`、`switch flash` 等控制句当成普通问题，请运行 `.\start-deepseek-vscode.bat -ProxyOnly -RestartProxy` 刷新代理。
 
 ## VS Code 命令面板
 
@@ -479,6 +480,7 @@ Codex CLI intercepts `/xxx` commands before they reach the proxy, so do not type
 Inside an interactive CLI session, you can also send `switch flash`, `switch pro`, `think max`, `think high`, or `think off`; the local proxy treats them as control commands instead of forwarding them as normal model prompts. Equivalent forms such as `/D-switch flash`, `D switch flash`, and `switch-flash` use the same parser.
 
 The status line of an already-running Codex CLI session does not hot-refresh, so it may still show the model used at startup. Actual requests are routed by the local proxy using the latest state file; new CLI / VS Code sessions read the updated isolated config.
+The startup script automatically restarts the local proxy when proxy code changes. If an already-open CLI still treats `help` or `switch flash` as a normal prompt, run `.\start-deepseek-vscode.bat -ProxyOnly -RestartProxy`.
 
 ## VS Code Command Palette
 
