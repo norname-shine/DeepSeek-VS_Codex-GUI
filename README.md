@@ -136,7 +136,7 @@ flowchart LR
 
 这些指令由本地 DeepSeek 代理处理，不需要手动修改配置文件。
 
-说明：Codex CLI 状态栏里的 reasoning effort 是 Codex 自己的显示项，不是 DeepSeek 的原生档位。DeepSeek V4 的 thinking 由 `thinking.enabled/disabled` 和 `reasoning_effort=high|max` 控制；本项目默认关闭 thinking，适合日常工具调用，需要深度推理时再手动打开。
+说明：Codex CLI 状态栏里的 reasoning effort 是 Codex 自己的显示项，不是 DeepSeek 的原生档位。DeepSeek V4 的 thinking 由 `thinking.enabled/disabled` 和 `reasoning_effort=high|max` 控制；本项目默认关闭 thinking，适合日常工具调用，需要深度推理时再手动打开。thinking 模式在工具调用链路中需要额外回传 `reasoning_content`，如果遇到工具调用异常，请先切回 `/D-think off`。
 
 ## 常驻上下文
 
@@ -224,6 +224,8 @@ Codex CLI 会优先拦截 `/xxx` 命令，所以不要在 CLI 交互界面里输
 .\start-deepseek-cli.bat think-max
 .\start-deepseek-cli.bat think-off
 ```
+
+正在运行中的 Codex CLI 底部状态栏不会热刷新，所以它可能仍显示启动时的模型名。实际请求会由本地代理按最新状态文件路由；新开 CLI / VS Code 会读取更新后的隔离配置。
 
 ## VS Code 命令面板
 
@@ -380,7 +382,7 @@ Available commands:
 
 These commands are handled by the local DeepSeek proxy, so you do not need to edit config files manually.
 
-Note: the reasoning effort shown by Codex CLI is a Codex-side display field, not a native DeepSeek tier. DeepSeek V4 thinking is controlled by `thinking.enabled/disabled` and `reasoning_effort=high|max`; this project keeps thinking disabled by default for regular tool-heavy agent work.
+Note: the reasoning effort shown by Codex CLI is a Codex-side display field, not a native DeepSeek tier. DeepSeek V4 thinking is controlled by `thinking.enabled/disabled` and `reasoning_effort=high|max`; this project keeps thinking disabled by default for regular tool-heavy agent work. Thinking mode requires `reasoning_content` handling in tool-call loops, so switch back to `/D-think off` if tool calls become unstable.
 
 ## Resident Context
 
@@ -467,6 +469,8 @@ Codex CLI intercepts `/xxx` commands before they reach the proxy, so do not type
 .\start-deepseek-cli.bat think-max
 .\start-deepseek-cli.bat think-off
 ```
+
+The status line of an already-running Codex CLI session does not hot-refresh, so it may still show the model used at startup. Actual requests are routed by the local proxy using the latest state file; new CLI / VS Code sessions read the updated isolated config.
 
 ## VS Code Command Palette
 

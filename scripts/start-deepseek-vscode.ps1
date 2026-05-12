@@ -75,6 +75,7 @@ $UpstreamModel = switch ($Model) {
     "deepseek-pro" { "deepseek-v4-pro" }
     "deepseek-flash" { "deepseek-v4-flash" }
 }
+$ModelExplicit = $PSBoundParameters.ContainsKey("Model")
 $ResidentContextPathExplicit = $PSBoundParameters.ContainsKey("ResidentContextPath")
 
 function Resolve-CodeLauncher {
@@ -482,6 +483,27 @@ function Write-ActiveModel {
     [System.IO.File]::WriteAllText($ActiveModelStateFile, $Value + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
 }
 
+function Update-IsolatedConfigModel {
+    param([string]$Value)
+
+    if (-not (Test-Path -LiteralPath $ConfigPath)) {
+        return
+    }
+
+    $content = Get-Content -LiteralPath $ConfigPath -Raw
+    $rootModelPattern = [regex]::new('(?m)^model = "deepseek-v4-(pro|flash)"$')
+    $content = $rootModelPattern.Replace($content, "model = `"$Value`"", 1)
+    $content = [regex]::Replace($content, '(?m)^model_reasoning_effort = "medium"$', 'model_reasoning_effort = "high"')
+    [System.IO.File]::WriteAllText($ConfigPath, $content, [System.Text.UTF8Encoding]::new($false))
+}
+
+function Set-ActiveModel {
+    param([string]$Value)
+
+    Write-ActiveModel -Value $Value
+    Update-IsolatedConfigModel -Value $Value
+}
+
 function Read-ThinkingMode {
     if (Test-Path -LiteralPath $ThinkingModeStateFile) {
         $value = (Get-Content -LiteralPath $ThinkingModeStateFile -Raw).Trim()
@@ -579,18 +601,21 @@ function Invoke-CliCommand {
         "switch" {
             $current = Read-ActiveModel
             $next = if ($current -eq "deepseek-v4-pro") { "deepseek-v4-flash" } else { "deepseek-v4-pro" }
-            Write-ActiveModel -Value $next
+            Set-ActiveModel -Value $next
             Write-Host "Switched to $next."
+            Write-Host "Running Codex CLI status text may stay stale until the session is restarted; proxy routing uses this new model immediately."
             return $true
         }
         "switch-pro" {
-            Write-ActiveModel -Value "deepseek-v4-pro"
+            Set-ActiveModel -Value "deepseek-v4-pro"
             Write-Host "Switched to deepseek-v4-pro."
+            Write-Host "Running Codex CLI status text may stay stale until the session is restarted; proxy routing uses this new model immediately."
             return $true
         }
         "switch-flash" {
-            Write-ActiveModel -Value "deepseek-v4-flash"
+            Set-ActiveModel -Value "deepseek-v4-flash"
             Write-Host "Switched to deepseek-v4-flash."
+            Write-Host "Running Codex CLI status text may stay stale until the session is restarted; proxy routing uses this new model immediately."
             return $true
         }
     }
@@ -602,6 +627,11 @@ if ((-not $ResidentContextPathExplicit) -and (-not $SkipResidentContext)) {
     $ResidentContextPath = Get-DefaultResidentContextPaths
 }
 $ResidentContextEnabled = (-not $SkipResidentContext) -and ($EnableResidentContext -or $ResidentContextPathExplicit -or $ResidentContextPath.Count -gt 0)
+
+if ((-not $ModelExplicit) -and (Test-Path -LiteralPath $ActiveModelStateFile)) {
+    $UpstreamModel = Read-ActiveModel
+    $Model = if ($UpstreamModel -eq "deepseek-v4-flash") { "deepseek-flash" } else { "deepseek-pro" }
+}
 
 Set-Location $ProjectRoot
 Write-IsolatedConfig
