@@ -136,7 +136,7 @@ flowchart LR
 
 这些指令由本地 DeepSeek 代理处理，不需要手动修改配置文件。
 
-说明：Codex CLI 状态栏里的 reasoning effort 是 Codex 自己的显示项，不是 DeepSeek 的原生档位。DeepSeek V4 的 thinking 由 `thinking.enabled/disabled` 和 `reasoning_effort=high|max` 控制；本项目默认关闭 thinking，适合日常工具调用，需要深度推理时再手动打开。thinking 模式和工具调用链路存在协议冲突；代理检测到工具定义、函数调用或工具输出历史时，会自动把当前请求降级为 `thinking disabled`。
+说明：Codex CLI 状态栏里的 reasoning effort 是 Codex 自己的显示项，不是 DeepSeek 的原生档位。DeepSeek V4 的 thinking 由 `thinking.enabled/disabled` 和 `reasoning_effort=high|max` 控制；本项目默认关闭 thinking，适合日常工具调用，需要深度推理时再手动打开。工具工作流中代理会缓存 DeepSeek 返回的 `reasoning_content` 并在工具结果回合自动回填；如果代理重启或缓存缺失，本次请求会自动降级为 `thinking disabled`，避免断流。
 
 ## 常驻上下文
 
@@ -387,7 +387,7 @@ Available commands:
 
 These commands are handled by the local DeepSeek proxy, so you do not need to edit config files manually.
 
-Note: the reasoning effort shown by Codex CLI is a Codex-side display field, not a native DeepSeek tier. DeepSeek V4 thinking is controlled by `thinking.enabled/disabled` and `reasoning_effort=high|max`; this project keeps thinking disabled by default for regular tool-heavy agent work. Thinking mode conflicts with tool-call loops, so the proxy automatically downgrades each request to `thinking disabled` when it detects tool definitions, function calls, or tool outputs.
+Note: the reasoning effort shown by Codex CLI is a Codex-side display field, not a native DeepSeek tier. DeepSeek V4 thinking is controlled by `thinking.enabled/disabled` and `reasoning_effort=high|max`; this project keeps thinking disabled by default for regular tool-heavy agent work. In tool workflows, the proxy caches DeepSeek `reasoning_content` and passes it back with tool results; if the proxy restarts or the cache is missing, that request is automatically downgraded to `thinking disabled` to avoid stream failures.
 
 ## Resident Context
 

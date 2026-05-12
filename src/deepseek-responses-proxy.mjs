@@ -13,6 +13,7 @@ const ACTIVE_MODEL_STATE_FILE = (process.env.DEEPSEEK_ACTIVE_MODEL_STATE_FILE ||
 const THINKING_MODE_STATE_FILE = (process.env.DEEPSEEK_THINKING_MODE_STATE_FILE || "").trim();
 const RESIDENT_CONTEXT_FILE = (process.env.DEEPSEEK_RESIDENT_CONTEXT_FILE || "").trim();
 const RESIDENT_CONTEXT_MAX_CHARS = Number(process.env.DEEPSEEK_RESIDENT_CONTEXT_MAX_CHARS || 600000);
+const REASONING_CACHE_MAX_ENTRIES = Number(process.env.DEEPSEEK_REASONING_CACHE_MAX_ENTRIES || 200);
 const LOG_REQUESTS = process.env.LOG_REQUESTS === "1";
 const DEFAULT_THINKING_MODE = normalizeThinkingMode(
   process.env.DEEPSEEK_THINKING_MODE || (process.env.DEEPSEEK_THINKING === "1" ? "high" : "disabled"),
@@ -34,6 +35,7 @@ const MODEL_NOT_MAPPED_MESSAGE =
 const deepSeekDispatcher = DEEPSEEK_UPSTREAM_PROXY ? new ProxyAgent(DEEPSEEK_UPSTREAM_PROXY) : undefined;
 let activeModel = loadActiveModel();
 let activeThinkingMode = loadThinkingMode();
+const reasoningContentByToolCallId = new Map();
 
 function responseId() {
   return `resp_${randomUUID().replaceAll("-", "")}`;
@@ -367,6 +369,43 @@ function responseToolOutputToMessage(item) {
   };
 }
 
+function getCachedReasoningForToolCalls(toolCalls) {
+  const reasoningParts = [];
+  const missingCallIds = [];
+  for (const toolCall of toolCalls) {
+    const cached = reasoningContentByToolCallId.get(toolCall.id);
+    if (cached) {
+      reasoningParts.push(cached);
+    } else {
+      missingCallIds.push(toolCall.id);
+    }
+  }
+
+  return {
+    reasoningContent: [...new Set(reasoningParts)].join("\n\n"),
+    missingCallIds,
+  };
+}
+
+function cacheReasoningForToolCalls(toolCalls, reasoningContent) {
+  if (!reasoningContent || !Array.isArray(toolCalls) || toolCalls.length === 0) return;
+  let cachedCount = 0;
+  for (const toolCall of toolCalls) {
+    const callId = toolCall?.id || toolCall?.call_id;
+    if (callId) {
+      reasoningContentByToolCallId.set(callId, reasoningContent);
+      cachedCount += 1;
+    }
+  }
+  while (reasoningContentByToolCallId.size > REASONING_CACHE_MAX_ENTRIES) {
+    const oldestKey = reasoningContentByToolCallId.keys().next().value;
+    reasoningContentByToolCallId.delete(oldestKey);
+  }
+  if (cachedCount > 0) {
+    console.error(`[deepseek-proxy] cached reasoning_content for ${cachedCount} tool call(s)`);
+  }
+}
+
 function responseInputToMessages(body, upstreamModel) {
   const messages = [];
 
@@ -443,11 +482,16 @@ function responseInputToMessages(body, upstreamModel) {
         [...expectedCallIds].every((callId) => actualCallIds.has(callId));
 
       if (hasCompleteToolOutputs) {
-        messages.push({
+        const assistantMessage = {
           role: "assistant",
           content: null,
           tool_calls: toolCalls,
-        });
+        };
+        const { reasoningContent } = getCachedReasoningForToolCalls(toolCalls);
+        if (reasoningContent) {
+          assistantMessage.reasoning_content = reasoningContent;
+        }
+        messages.push(assistantMessage);
         messages.push(...toolMessages);
       }
       continue;
@@ -511,6 +555,28 @@ function inputContainsToolWorkflow(input) {
   });
 }
 
+function missingReasoningForToolWorkflow(input) {
+  if (!Array.isArray(input)) return false;
+
+  for (let i = 0; i < input.length; i += 1) {
+    const item = input[i];
+    if (!item || typeof item !== "object" || item.type !== "function_call") continue;
+
+    const toolCalls = [];
+    while (i < input.length) {
+      const callItem = input[i];
+      if (!callItem || typeof callItem !== "object" || callItem.type !== "function_call") break;
+      toolCalls.push(responseFunctionCallToToolCall(callItem));
+      i += 1;
+    }
+
+    const { missingCallIds } = getCachedReasoningForToolCalls(toolCalls);
+    if (missingCallIds.length > 0) return true;
+  }
+
+  return false;
+}
+
 function isToolWorkflowRequest(body, chatTools) {
   return Boolean(
     (Array.isArray(chatTools) && chatTools.length > 0) ||
@@ -526,9 +592,11 @@ function buildChatPayload(body, stream, upstreamModel) {
   }
 
   const tools = responsesToolsToChatTools(body.tools);
-  const effectiveThinkingMode = isToolWorkflowRequest(body, tools) ? "disabled" : activeThinkingMode;
-  if (activeThinkingMode !== "disabled" && effectiveThinkingMode === "disabled") {
-    console.error("[deepseek-proxy] thinking disabled for tool workflow request");
+  const toolWorkflow = isToolWorkflowRequest(body, tools);
+  const missingReasoning = activeThinkingMode !== "disabled" && toolWorkflow && missingReasoningForToolWorkflow(body.input);
+  const effectiveThinkingMode = missingReasoning ? "disabled" : activeThinkingMode;
+  if (missingReasoning) {
+    console.error("[deepseek-proxy] thinking disabled for tool workflow request because reasoning_content cache is missing");
   }
   const payload = {
     model: upstreamModel,
@@ -813,7 +881,10 @@ async function handleNonStream(reqBody, req, res, apiKey, upstreamModel) {
   const data = JSON.parse(upstreamText);
   const message = data.choices?.[0]?.message || {};
   const text = message.content || "";
+  const reasoningContent = message.reasoning_content || "";
   const output = [];
+  const toolCalls = message.tool_calls || [];
+  cacheReasoningForToolCalls(toolCalls, reasoningContent);
 
   if (text) {
     output.push({
@@ -825,7 +896,7 @@ async function handleNonStream(reqBody, req, res, apiKey, upstreamModel) {
     });
   }
 
-  for (const toolCall of message.tool_calls || []) {
+  for (const toolCall of toolCalls) {
     output.push({
       id: `fc_${randomUUID().replaceAll("-", "")}`,
       type: "function_call",
@@ -955,6 +1026,7 @@ async function handleStream(reqBody, req, res, apiKey, upstreamModel) {
   }
 
   let fullText = "";
+  let reasoningContent = "";
   let buffer = "";
   const decoder = new TextDecoder();
 
@@ -976,7 +1048,13 @@ async function handleStream(reqBody, req, res, apiKey, upstreamModel) {
           continue;
         }
 
-        const delta = parsed.choices?.[0]?.delta?.content || "";
+        const deltaPayload = parsed.choices?.[0]?.delta || {};
+        const reasoningDelta = deltaPayload.reasoning_content || "";
+        if (reasoningDelta) {
+          reasoningContent += reasoningDelta;
+        }
+
+        const delta = deltaPayload.content || "";
         if (delta) {
           addTextItem();
           fullText += delta;
@@ -988,7 +1066,7 @@ async function handleStream(reqBody, req, res, apiKey, upstreamModel) {
           });
         }
 
-        for (const toolCall of parsed.choices?.[0]?.delta?.tool_calls || []) {
+        for (const toolCall of deltaPayload.tool_calls || []) {
           const index = Number.isInteger(toolCall.index) ? toolCall.index : 0;
           const entry = addToolItem(index, toolCall);
           if (toolCall.id && !entry.item.call_id) entry.item.call_id = toolCall.id;
@@ -1052,6 +1130,13 @@ async function handleStream(reqBody, req, res, apiKey, upstreamModel) {
     send("response.output_item.done", { output_index: entry.outputIndex, item: entry.item });
     completedOutput.push(entry.item);
   }
+  cacheReasoningForToolCalls(
+    [...toolOutputItems.values()].map((entry) => ({
+      id: entry.item.call_id,
+      call_id: entry.item.call_id,
+    })),
+    reasoningContent,
+  );
 
   if (!textOutputItem && toolOutputItems.size === 0) {
     addTextItem();
