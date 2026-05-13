@@ -20,7 +20,7 @@
 
 ## 中文版
 
-DeepSeek Codex Bridge 是一个面向 VS Code Codex 工作流的本地兼容桥。它通过本地 Responses 兼容代理，把 DeepSeek 接入 Codex 的桌面体验。默认使用 VS Code 原生 profile 复用本机登录态和插件，同时使用独立 `CODEX_HOME` 隔离 DeepSeek 模型配置，避免污染你原本的 OpenAI / GPT Codex 配置。
+DeepSeek Codex Bridge 是一个面向 VS Code Codex 工作流的本地兼容桥。它通过本地 Responses 兼容代理，把 DeepSeek 接入 Codex 的桌面体验。默认复用主 VS Code user-data，所以本机登录态、已安装插件和 Codex 面板保持一致，同时使用独立 `CODEX_HOME` 隔离 DeepSeek 模型配置，避免污染你原本的 OpenAI / GPT Codex 配置。
 
 它适合希望继续使用 Codex 可视化文件联动、拖拽交互、diff、跳转、引导式任务和插件 / MCP 配置能力，同时又想把部分任务路由给 DeepSeek V4 Pro / Flash 的用户。
 
@@ -63,14 +63,14 @@ Codex 的 VS Code 桌面体验适合真实项目开发，但第三方模型接�
 | 上下文传递不稳定 | 启动时生成常驻项目上下文，同时保留 Codex 聊天窗口、附件、选区和工具结果的最高优先级 |
 | 模型切换麻烦 | 提供 `/D-switch`、`switch flash` 等统一命令别名 |
 | DeepSeek 和 GPT 网络路径冲突 | DeepSeek 上游请求可单独指定 HTTP / HTTPS 代理 |
-| 不想影响原 Codex 配置 | 默认复用 VS Code 登录态和插件，但使用独立 `CODEX_HOME` 和独立模型配置 |
+| 不想影响原 Codex 配置 | 默认复用主 VS Code 登录态和插件，但使用独立 `CODEX_HOME` 和独立模型配置 |
 | CLI 交互不透明 | 保留 VS Code Codex 面板、文件窗口联动、diff、跳转和会话体验 |
 | 工作过程不可见 | 注入可见工作流策略，让 DS 给出短进度更新，并在完成后总结文件与 diff |
 | thinking 与工具调用冲突 | 代理缓存并回填 DeepSeek `reasoning_content`，缓存缺失时自动降级以避免断流 |
 
 ## 核心特性
 
-- **分层隔离**：默认复用 VS Code 登录态、插件和系统凭据；DeepSeek 的 Codex 配置仍放在独立 `CODEX_HOME`。
+- **分层隔离**：默认复用主 VS Code user-data、登录态、插件和系统凭据；DeepSeek 的 Codex 配置仍放在独立 `CODEX_HOME`。
 - **DeepSeek 模型切换**：支持 DeepSeek V4 Pro / Flash，可通过聊天框或 CLI 命令切换。
 - **统一命令解析**：`/D-switch flash`、`D switch flash`、`switch flash`、`switch-flash` 等等价写法走同一套逻辑。
 - **thinking 模式控制**：支持 `think high` / `think max` / `think off`，并在工具调用回合中尽量保持 thinking。
@@ -101,7 +101,7 @@ flowchart LR
 2. 同步主 Codex 配置中的插件、MCP、marketplace、connector 配置块。
 3. 刷新常驻项目上下文。
 4. 启动或按代码 hash 自动重启本地 DeepSeek 兼容代理。
-5. 通过 VS Code 原生 profile 打开 DeepSeek 窗口，或启动隔离 CLI。
+5. 通过主 VS Code user-data 打开 DeepSeek 窗口，或启动隔离 CLI。
 
 ## 界面预览
 
@@ -135,9 +135,15 @@ flowchart LR
 
 ### 3. 在新窗口使用 Codex 面板
 
-打开后的窗口默认使用 VS Code profile `DeepSeek Codex`，因此会沿用本机 VS Code 的扩展安装、Codex 登录态和系统代理能力。DeepSeek 的模型 provider、代理地址和常驻上下文仍由独立 `CODEX_HOME` 控制。你可以像平时一样在 Codex 面板里发送任务、附加文件、查看 diff、拖拽文件、使用选区上下文或继续项目会话。
+打开后的窗口默认使用主 VS Code user-data，因此会沿用本机 VS Code 的扩展安装、Codex 登录态、插件状态和系统代理能力。DeepSeek 的模型 provider、代理地址和常驻上下文仍由独立 `CODEX_HOME` 控制。你可以像平时一样在 Codex 面板里发送任务、附加文件、查看 diff、拖拽文件、使用选区上下文或继续项目会话。
 
-如果你需要完全独立的 VS Code user-data 环境，可以使用旧模式：
+如果你需要一个命名 VS Code profile，可以使用：
+
+```powershell
+.\start-deepseek-vscode.bat -VsCodeStateMode shared-profile
+```
+
+注意：VS Code profile 会隔离扩展启用状态，新 profile 里可能需要重新启用 Codex 插件。如果你需要完全独立的 VS Code user-data 环境，可以使用旧模式：
 
 ```powershell
 .\start-deepseek-vscode.bat -VsCodeStateMode isolated-user-data
@@ -223,7 +229,7 @@ GEMINI.md
 
 该代理只用于 DeepSeek 上游请求，不影响正常 GPT / Codex 使用路径。脚本也会为本地 `127.0.0.1` / `localhost` 设置 `NO_PROXY`，避免 VPN 或系统代理把本地桥接流量错误转发出去。
 
-默认 `shared-profile` 模式会沿用本机 VS Code 的代理和登录能力，所以 Codex / ChatGPT 登录可以继续使用系统代理或 VPN 访问 `chatgpt.com`。本地桥接地址仍由 `NO_PROXY` 保护，不会被系统代理转发。只有在 `isolated-user-data` 模式下，才需要用下面的参数控制隔离 VS Code 的代理支持：
+默认 `shared-user-data` 模式会沿用本机 VS Code 的代理、登录和插件能力，所以 Codex / ChatGPT 登录可以继续使用系统代理或 VPN 访问 `chatgpt.com`。本地桥接地址仍由 `NO_PROXY` 保护，不会被系统代理转发。只有在 `isolated-user-data` 模式下，才需要用下面的参数控制隔离 VS Code 的代理支持：
 
 ```powershell
 .\start-deepseek-vscode.bat -VsCodeProxySupport off
@@ -326,7 +332,7 @@ deepseek-vscode-proxy.out.log
 
 ### 4. Codex 登录窗口没有出现
 
-默认窗口使用 VS Code 原生 profile，会复用本机 VS Code 的登录态和插件。如果你需要 VPN 才能使用 GPT / Codex，请保持 VPN 开启并重启 DeepSeek VS Code 窗口：
+默认窗口复用主 VS Code user-data，会复用本机 VS Code 的登录态和插件。如果你需要 VPN 才能使用 GPT / Codex，请保持 VPN 开启并重新启动 DeepSeek VS Code 窗口：
 
 ```powershell
 .\start-deepseek-vscode.bat -RestartIsolatedVsCode
@@ -423,7 +429,7 @@ LICENSE                               MIT License
 
 ## English Version
 
-DeepSeek Codex Bridge is a local compatibility bridge for the VS Code Codex workflow. It routes selected Codex traffic to DeepSeek through a local Responses-compatible proxy. By default, it uses a native VS Code profile so your local sign-in state and extensions stay available, while DeepSeek model configuration remains isolated in a separate `CODEX_HOME`.
+DeepSeek Codex Bridge is a local compatibility bridge for the VS Code Codex workflow. It routes selected Codex traffic to DeepSeek through a local Responses-compatible proxy. By default, it reuses the main VS Code user-data so local sign-in state, installed extensions, and the Codex panel stay consistent, while DeepSeek model configuration remains isolated in a separate `CODEX_HOME`.
 
 It is designed for users who want DeepSeek V4 Pro / Flash inside the VS Code Codex desktop experience, including visual file context, drag-and-drop interaction, diffs, navigation, guided workflows, and plugin / MCP config reuse.
 
@@ -465,14 +471,14 @@ The VS Code Codex desktop workflow is useful for real project work, but third-pa
 | Context may not reach the model reliably | Generates resident project context while keeping chat-window context, attachments, selections, and tool results authoritative |
 | Model switching is slow | Adds `/D-switch`, `switch flash`, and other unified command aliases |
 | DeepSeek and GPT need different network paths | Allows a dedicated HTTP / HTTPS upstream proxy for DeepSeek |
-| Normal Codex config should stay untouched | Reuses VS Code sign-in state and extensions by default, while keeping an isolated `CODEX_HOME` and model config |
+| Normal Codex config should stay untouched | Reuses main VS Code sign-in state and extensions by default, while keeping an isolated `CODEX_HOME` and model config |
 | CLI-only usage feels opaque | Keeps the Codex panel, file linkage, diffs, jumps, and session flow |
 | Work progress is hard to observe | Injects a visible workflow policy so DS gives short progress updates and final diff summaries |
 | thinking can conflict with tool calls | Caches and replays DeepSeek `reasoning_content`; downgrades safely when cache is missing |
 
 ## Features
 
-- **Layered isolation**: reuses VS Code sign-in state, extensions, and OS credentials by default, while keeping DeepSeek Codex config in a separate `CODEX_HOME`.
+- **Layered isolation**: reuses the main VS Code user-data, sign-in state, extensions, and OS credentials by default, while keeping DeepSeek Codex config in a separate `CODEX_HOME`.
 - **DeepSeek model switching**: DeepSeek V4 Pro / Flash with chat and CLI commands.
 - **Unified command parser**: equivalent forms such as `/D-switch flash`, `D switch flash`, `switch flash`, and `switch-flash` share one parser.
 - **thinking mode control**: supports `think high`, `think max`, and `think off`.
@@ -503,7 +509,7 @@ On startup, the launcher:
 2. Syncs plugin / MCP / marketplace / connector config blocks from the main Codex config.
 3. Refreshes resident project context.
 4. Starts or hash-refreshes the local DeepSeek compatibility proxy.
-5. Opens a DeepSeek VS Code window through a native VS Code profile, or starts the isolated CLI.
+5. Opens a DeepSeek VS Code window through the main VS Code user-data, or starts the isolated CLI.
 
 ## Screenshots
 
@@ -537,9 +543,15 @@ For day-to-day project development. It keeps the Codex chat panel, files, naviga
 
 ### 3. Use the Codex panel
 
-The launcher uses the VS Code profile `DeepSeek Codex` by default, so it can reuse your local VS Code extension installation, Codex sign-in state, and system proxy behavior. DeepSeek model provider settings, proxy routing, and resident context still live under the isolated `CODEX_HOME`. Use the Codex panel as you normally would: send tasks, attach files, inspect diffs, drag files into context, use selections, and continue project sessions.
+The launcher uses the main VS Code user-data by default, so it reuses your local VS Code extension installation, Codex sign-in state, extension state, and system proxy behavior. DeepSeek model provider settings, proxy routing, and resident context still live under the isolated `CODEX_HOME`. Use the Codex panel as you normally would: send tasks, attach files, inspect diffs, drag files into context, use selections, and continue project sessions.
 
-If you need a fully separate VS Code user-data environment, use the legacy isolated mode:
+If you need a named VS Code profile, use:
+
+```powershell
+.\start-deepseek-vscode.bat -VsCodeStateMode shared-profile
+```
+
+Note: VS Code profiles isolate extension enablement. A new named profile may require enabling the Codex extension again. If you need a fully separate VS Code user-data environment, use the legacy isolated mode:
 
 ```powershell
 .\start-deepseek-vscode.bat -VsCodeStateMode isolated-user-data
@@ -625,7 +637,7 @@ Use a dedicated upstream proxy for DeepSeek:
 
 This only affects DeepSeek upstream requests. The launcher also keeps local `127.0.0.1` / `localhost` traffic out of system proxy routing so VPN settings do not break the local bridge.
 
-The default `shared-profile` mode reuses your local VS Code proxy and sign-in behavior, so Codex / ChatGPT login can still use your system proxy or VPN to reach `chatgpt.com`. Local bridge traffic remains protected by `NO_PROXY`. The following option only matters in `isolated-user-data` mode:
+The default `shared-user-data` mode reuses your local VS Code proxy, sign-in, and extension behavior, so Codex / ChatGPT login can still use your system proxy or VPN to reach `chatgpt.com`. Local bridge traffic remains protected by `NO_PROXY`. The following option only matters in `isolated-user-data` mode:
 
 ```powershell
 .\start-deepseek-vscode.bat -VsCodeProxySupport off
@@ -726,7 +738,7 @@ If DeepSeek needs a proxy, launch with a dedicated upstream proxy:
 
 ### 4. Codex login window does not appear
 
-The default window uses a native VS Code profile, so it can reuse your local VS Code sign-in state and extensions. If GPT / Codex requires your VPN, keep the VPN enabled and restart the DeepSeek VS Code window:
+The default window reuses the main VS Code user-data, so it can reuse your local VS Code sign-in state and extensions. If GPT / Codex requires your VPN, keep the VPN enabled and restart the DeepSeek VS Code window:
 
 ```powershell
 .\start-deepseek-vscode.bat -RestartIsolatedVsCode

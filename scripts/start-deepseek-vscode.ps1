@@ -20,8 +20,8 @@ param(
     [ValidateSet("on", "off", "override")]
     [string]$VsCodeProxySupport = "on",
 
-    [ValidateSet("shared-profile", "isolated-user-data")]
-    [string]$VsCodeStateMode = "shared-profile",
+    [ValidateSet("shared-user-data", "shared-profile", "isolated-user-data")]
+    [string]$VsCodeStateMode = "shared-user-data",
 
     [string]$VsCodeProfileName = "DeepSeek Codex",
 
@@ -82,7 +82,9 @@ $VsCodeProfileName = $VsCodeProfileName.Trim()
 if ([string]::IsNullOrWhiteSpace($VsCodeProfileName)) {
     $VsCodeProfileName = "DeepSeek Codex"
 }
+$UseSharedVsCodeUserData = $VsCodeStateMode -eq "shared-user-data"
 $UseSharedVsCodeProfile = $VsCodeStateMode -eq "shared-profile"
+$UseIsolatedVsCodeUserData = $VsCodeStateMode -eq "isolated-user-data"
 $ProxyUri = [System.Uri]$BaseUrl
 $HealthUrl = "$BaseUrl/health"
 
@@ -267,7 +269,11 @@ function Add-NoProxyEntry {
 
 function Stop-IsolatedVsCode {
     $allProcesses = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue
-    if ($UseSharedVsCodeProfile) {
+    if ($UseSharedVsCodeUserData) {
+        Write-Warning "-RestartIsolatedVsCode cannot safely target only the DeepSeek window in shared-user-data mode. Close the DeepSeek VS Code window manually if needed."
+        return
+    }
+    elseif ($UseSharedVsCodeProfile) {
         $escapedProfileName = [regex]::Escape($VsCodeProfileName)
         $rootProcesses = $allProcesses |
             Where-Object { $_.CommandLine -match "--profile" -and $_.CommandLine -match $escapedProfileName }
@@ -745,7 +751,7 @@ if ((-not $ModelExplicit) -and (Test-Path -LiteralPath $ActiveModelStateFile)) {
 
 Set-Location $ProjectRoot
 Write-IsolatedConfig
-if (-not $UseSharedVsCodeProfile) {
+if ($UseIsolatedVsCodeUserData) {
     Set-IsolatedVsCodeSettings
 }
 
@@ -772,7 +778,9 @@ if ($PrepareOnly) {
     Write-Host "  Approval policy: $ApprovalPolicy"
     Write-Host "  Response language: $ResponseLanguage"
     Write-Host "  VS Code state mode: $VsCodeStateMode"
-    if ($UseSharedVsCodeProfile) {
+    if ($UseSharedVsCodeUserData) {
+        Write-Host "  VS Code user data: main VS Code user data"
+    } elseif ($UseSharedVsCodeProfile) {
         Write-Host "  VS Code profile: $VsCodeProfileName"
     } else {
         Write-Host "  VS Code proxy support: $VsCodeProxySupport"
@@ -867,7 +875,7 @@ else {
     Write-Host "DeepSeek proxy is already healthy on $HealthUrl."
 }
 
-if (-not $UseSharedVsCodeProfile) {
+if ($UseIsolatedVsCodeUserData) {
     New-Item -ItemType Directory -Force -Path $VsCodeUserDataDir | Out-Null
 }
 
@@ -876,8 +884,8 @@ if ($RestartIsolatedVsCode) {
     Start-Sleep -Milliseconds 800
 }
 
-if ($ResetVsCodeState -and $UseSharedVsCodeProfile) {
-    Write-Warning "-ResetVsCodeState only resets the isolated user-data mode. It is ignored in shared-profile mode."
+if ($ResetVsCodeState -and (-not $UseIsolatedVsCodeUserData)) {
+    Write-Warning "-ResetVsCodeState only resets the isolated-user-data mode. It is ignored in $VsCodeStateMode mode."
 }
 elseif ($ResetVsCodeState) {
     Reset-IsolatedVsCodeState
@@ -891,7 +899,9 @@ if ($CliOnly) {
 }
 Write-Host "  CODEX_HOME: $CodexHome"
 Write-Host "  VS Code state mode: $VsCodeStateMode"
-if ($UseSharedVsCodeProfile) {
+if ($UseSharedVsCodeUserData) {
+    Write-Host "  VS Code user data: main VS Code user data"
+} elseif ($UseSharedVsCodeProfile) {
     Write-Host "  VS Code profile: $VsCodeProfileName"
 } else {
     Write-Host "  VS Code user data: $VsCodeUserDataDir"
@@ -903,7 +913,7 @@ Write-Host "  Model: $Model ($UpstreamModel)"
 Write-Host "  Sandbox: $SandboxMode"
 Write-Host "  Approval policy: $ApprovalPolicy"
 Write-Host "  Response language: $ResponseLanguage"
-if (-not $UseSharedVsCodeProfile) {
+if ($UseIsolatedVsCodeUserData) {
     Write-Host "  VS Code proxy support: $VsCodeProxySupport"
 }
 Write-Host "  Reset VS Code state: $ResetVsCodeState"
@@ -938,7 +948,10 @@ if ($CliOnly) {
 Write-Host ""
 Write-Host "This does not modify the real Codex config: $RealCodexConfigPath"
 
-if ($UseSharedVsCodeProfile) {
+if ($UseSharedVsCodeUserData) {
+    & $codeLauncher --new-window $ProjectRoot
+}
+elseif ($UseSharedVsCodeProfile) {
     & $codeLauncher --new-window --profile $VsCodeProfileName $ProjectRoot
 }
 else {
