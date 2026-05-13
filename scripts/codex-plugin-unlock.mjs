@@ -39,9 +39,9 @@ const payload = String.raw`
     return true;
   }
 
-  function spoofAllAuthContexts() {
+  function spoofAllAuthContexts(doc = document) {
     let changed = 0;
-    const nodes = [document.body, ...document.querySelectorAll("button, a, nav, main, section, div, [role='button'], [role='tab'], [role='navigation']")].filter(Boolean);
+    const nodes = [doc.body, ...doc.querySelectorAll("button, a, nav, main, section, div, [role='button'], [role='tab'], [role='navigation']")].filter(Boolean);
     for (const node of nodes) {
       const auth = authContextValueFrom(node);
       if (auth && auth.authMethod !== "chatgpt") {
@@ -52,14 +52,14 @@ const payload = String.raw`
     return changed;
   }
 
-  function hideApiLoginPluginWarning() {
+  function hideApiLoginPluginWarning(doc = document) {
     const patterns = [
       /使用\s*ChatGPT\s*账户登录以使用插件/i,
       /使用\s*API\s*密钥登录时无法使用插件/i,
       /ChatGPT account.*plugins/i,
       /API key.*plugins/i,
     ];
-    document.querySelectorAll("div, section, aside, [role='alert'], [data-testid]").forEach((node) => {
+    doc.querySelectorAll("div, section, aside, [role='alert'], [data-testid]").forEach((node) => {
       const text = (node.textContent || "").replace(/\s+/g, " ").trim();
       if (!text || text.length > 300) return;
       if (patterns.some((pattern) => pattern.test(text))) {
@@ -69,15 +69,15 @@ const payload = String.raw`
     });
   }
 
-  function pluginEntryButton() {
-    const byIcon = document.querySelector(selectors.pluginNavButton + " " + selectors.pluginSvgPath)?.closest("button");
+  function pluginEntryButton(doc = document) {
+    const byIcon = doc.querySelector(selectors.pluginNavButton + " " + selectors.pluginSvgPath)?.closest("button");
     if (byIcon) return byIcon;
-    return Array.from(document.querySelectorAll(selectors.pluginNavButton))
+    return Array.from(doc.querySelectorAll(selectors.pluginNavButton))
       .find((button) => /^(插件|Plugins)(\s+-\s+.*)?$/i.test((button.textContent || "").trim())) || null;
   }
 
-  function enablePluginEntry() {
-    const pluginButton = pluginEntryButton();
+  function enablePluginEntry(doc = document) {
+    const pluginButton = pluginEntryButton(doc);
     if (!pluginButton) return;
     spoofChatGPTAuthMethod(pluginButton);
     pluginButton.disabled = false;
@@ -109,19 +109,33 @@ const payload = String.raw`
     }
   }
 
-  function unblockPluginInstallButtons() {
-    Array.from(document.querySelectorAll(selectors.disabledInstallButton)).forEach((button) => {
+  function unblockPluginInstallButtons(doc = document) {
+    Array.from(doc.querySelectorAll(selectors.disabledInstallButton)).forEach((button) => {
       const text = (button.textContent || "").trim();
       if (!/^安装\s/.test(text) && !/^Install\s/.test(text) && text !== "强制安装") return;
       unblockButtonElement(button);
     });
   }
 
+  function documents() {
+    const docs = [document];
+    for (const frame of document.querySelectorAll("iframe")) {
+      try {
+        if (frame.contentDocument) docs.push(frame.contentDocument);
+      } catch {
+        // Cross-origin frames are not patchable from this target.
+      }
+    }
+    return docs;
+  }
+
   function tick() {
-    spoofAllAuthContexts();
-    enablePluginEntry();
-    unblockPluginInstallButtons();
-    hideApiLoginPluginWarning();
+    for (const doc of documents()) {
+      spoofAllAuthContexts(doc);
+      enablePluginEntry(doc);
+      unblockPluginInstallButtons(doc);
+      hideApiLoginPluginWarning(doc);
+    }
   }
 
   tick();
