@@ -17,6 +17,9 @@ param(
     [ValidateSet("auto", "off")]
     [string]$ResponseLanguage = "auto",
 
+    [ValidateSet("on", "off", "override")]
+    [string]$VsCodeProxySupport = "on",
+
     [string[]]$ResidentContextPath = @(),
 
     [string]$ResidentContextPrompt = "Optional resident project background for DeepSeek Codex. Treat Codex chat-window context, attached files, selected code, tool results, and the latest user message as authoritative.",
@@ -342,7 +345,7 @@ function Set-IsolatedVsCodeSettings {
     }
 
     $settings["chatgpt.localeOverride"] = "zh-CN"
-    $settings["http.proxySupport"] = "off"
+    $settings["http.proxySupport"] = $VsCodeProxySupport
 
     $json = $settings | ConvertTo-Json -Depth 8
     [System.IO.File]::WriteAllText($settingsPath, $json + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
@@ -725,6 +728,7 @@ if ((-not $ModelExplicit) -and (Test-Path -LiteralPath $ActiveModelStateFile)) {
 
 Set-Location $ProjectRoot
 Write-IsolatedConfig
+Set-IsolatedVsCodeSettings
 
 if ($CliOnly -and $CliCommand) {
     if (Invoke-CliCommand) {
@@ -748,6 +752,7 @@ if ($PrepareOnly) {
     Write-Host "  Sandbox: $SandboxMode"
     Write-Host "  Approval policy: $ApprovalPolicy"
     Write-Host "  Response language: $ResponseLanguage"
+    Write-Host "  VS Code proxy support: $VsCodeProxySupport"
     if ($ResidentContextEnabled) {
         Write-Host "  Resident project context: $ResidentContextFile"
     } else {
@@ -849,8 +854,6 @@ if ($ResetVsCodeState) {
     Reset-IsolatedVsCodeState
 }
 
-Set-IsolatedVsCodeSettings
-
 Write-Host ""
 if ($CliOnly) {
     Write-Host "Preparing isolated Codex CLI for DeepSeek."
@@ -866,6 +869,7 @@ Write-Host "  Model: $Model ($UpstreamModel)"
 Write-Host "  Sandbox: $SandboxMode"
 Write-Host "  Approval policy: $ApprovalPolicy"
 Write-Host "  Response language: $ResponseLanguage"
+Write-Host "  VS Code proxy support: $VsCodeProxySupport"
 Write-Host "  Reset VS Code state: $ResetVsCodeState"
 Write-Host "  Active model state: $ActiveModelStateFile"
 Write-Host "  Thinking mode: $(Read-ThinkingMode)"

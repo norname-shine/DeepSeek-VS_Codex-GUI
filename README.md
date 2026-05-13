@@ -217,6 +217,12 @@ GEMINI.md
 
 该代理只用于 DeepSeek 上游请求，不影响正常 GPT / Codex 使用路径。脚本也会为本地 `127.0.0.1` / `localhost` 设置 `NO_PROXY`，避免 VPN 或系统代理把本地桥接流量错误转发出去。
 
+隔离 VS Code 默认保留 `http.proxySupport=on`，这样 Codex / ChatGPT 登录仍可使用系统代理或 VPN 访问 `chatgpt.com`。本地桥接地址仍由 `NO_PROXY` 保护，不会被系统代理转发。如果你确定隔离 VS Code 不应使用系统代理，可以显式关闭：
+
+```powershell
+.\start-deepseek-vscode.bat -VsCodeProxySupport off
+```
+
 ## 本地 CLI
 
 只想使用本地 Codex CLI 时：
@@ -312,7 +318,23 @@ deepseek-vscode-proxy.out.log
 .\start-deepseek-vscode.bat -DeepSeekProxyUrl http://127.0.0.1:7890
 ```
 
-### 4. 常驻上下文没有更新
+### 4. Codex 登录窗口没有出现
+
+隔离窗口使用独立 VS Code profile，但仍依赖 Codex 扩展访问 `chatgpt.com` 完成登录。如果你需要 VPN 才能使用 GPT / Codex，请保持 VPN 开启，并使用默认的 VS Code 代理支持：
+
+```powershell
+.\start-deepseek-vscode.bat -RestartIsolatedVsCode
+```
+
+如果之前手动关闭过 VS Code 代理支持，可以重新写入默认设置：
+
+```powershell
+.\start-deepseek-vscode.bat -VsCodeProxySupport on -RestartIsolatedVsCode
+```
+
+仍然没有登录入口时，先打开隔离窗口里的 Codex / ChatGPT 侧边栏。该扩展通常在视图激活后才会触发登录流程。
+
+### 5. 常驻上下文没有更新
 
 删除旧文件后重新启动，或手动指定扫描范围：
 
@@ -321,7 +343,7 @@ Remove-Item .deepseek/resident-context.md -ErrorAction SilentlyContinue
 .\start-deepseek-vscode.bat -ResidentContextPath README.md,src,scripts
 ```
 
-### 5. thinking 模式下工具调用断流
+### 6. thinking 模式下工具调用断流
 
 优先刷新代理，确保正在使用包含 `reasoning_content` 缓存回填逻辑的新版本：
 
@@ -335,7 +357,7 @@ Remove-Item .deepseek/resident-context.md -ErrorAction SilentlyContinue
 .\start-deepseek-cli.bat think off
 ```
 
-### 6. 隔离 VS Code 窗口打不开
+### 7. 隔离 VS Code 窗口打不开
 
 如果启动脚本提示 `VS Code is currently updating`，说明 VS Code 安装目录处于更新中或残留更新标记。先关闭普通 VS Code 窗口，等待 `CodeSetup-stable...` 更新进程结束，再重新运行：
 
@@ -591,6 +613,12 @@ Use a dedicated upstream proxy for DeepSeek:
 
 This only affects DeepSeek upstream requests. The launcher also keeps local `127.0.0.1` / `localhost` traffic out of system proxy routing so VPN settings do not break the local bridge.
 
+The isolated VS Code profile keeps `http.proxySupport=on` by default, so Codex / ChatGPT login can still use your system proxy or VPN to reach `chatgpt.com`. Local bridge traffic remains protected by `NO_PROXY`. If you intentionally want the isolated VS Code window to ignore system proxy settings, launch with:
+
+```powershell
+.\start-deepseek-vscode.bat -VsCodeProxySupport off
+```
+
 ## Local CLI
 
 ```powershell
@@ -684,7 +712,23 @@ If DeepSeek needs a proxy, launch with a dedicated upstream proxy:
 .\start-deepseek-vscode.bat -DeepSeekProxyUrl http://127.0.0.1:7890
 ```
 
-### 4. Resident context is stale
+### 4. Codex login window does not appear
+
+The isolated window uses a separate VS Code profile, but the Codex extension still needs to reach `chatgpt.com` to sign in. If GPT / Codex requires your VPN, keep the VPN enabled and restart the isolated window with the default VS Code proxy support:
+
+```powershell
+.\start-deepseek-vscode.bat -RestartIsolatedVsCode
+```
+
+If you previously disabled VS Code proxy support, write the default setting again:
+
+```powershell
+.\start-deepseek-vscode.bat -VsCodeProxySupport on -RestartIsolatedVsCode
+```
+
+If the login entry still does not appear, open the Codex / ChatGPT sidebar in the isolated window first. The extension usually starts its login flow only after the view is activated.
+
+### 5. Resident context is stale
 
 Remove the generated file and restart, or specify the scan scope manually:
 
@@ -693,7 +737,7 @@ Remove-Item .deepseek/resident-context.md -ErrorAction SilentlyContinue
 .\start-deepseek-vscode.bat -ResidentContextPath README.md,src,scripts
 ```
 
-### 5. Tool calls fail in thinking mode
+### 6. Tool calls fail in thinking mode
 
 Refresh the proxy first to make sure the `reasoning_content` replay logic is running:
 
@@ -707,7 +751,7 @@ If the proxy loses cache for a tool call, it automatically downgrades that reque
 .\start-deepseek-cli.bat think off
 ```
 
-### 6. Isolated VS Code does not open
+### 7. Isolated VS Code does not open
 
 If the launcher reports `VS Code is currently updating`, the VS Code install directory is updating or has leftover update markers. Close normal VS Code windows, wait for the `CodeSetup-stable...` update process to finish, then run:
 
