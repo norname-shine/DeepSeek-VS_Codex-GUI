@@ -335,6 +335,16 @@ Remove-Item .deepseek/resident-context.md -ErrorAction SilentlyContinue
 .\start-deepseek-cli.bat think off
 ```
 
+### 6. 隔离 VS Code 窗口打不开
+
+如果启动脚本提示 `VS Code is currently updating`，说明 VS Code 安装目录处于更新中或残留更新标记。先关闭普通 VS Code 窗口，等待 `CodeSetup-stable...` 更新进程结束，再重新运行：
+
+```powershell
+.\start-deepseek-vscode.bat
+```
+
+如果更新长时间卡住，请先完成、取消或修复 VS Code 更新。隔离窗口依赖同一个 VS Code 安装目录，安装器未完成时 VS Code 会拒绝启动。
+
 ## 项目结构
 
 ```text
@@ -696,6 +706,16 @@ If the proxy loses cache for a tool call, it automatically downgrades that reque
 ```powershell
 .\start-deepseek-cli.bat think off
 ```
+
+### 6. Isolated VS Code does not open
+
+If the launcher reports `VS Code is currently updating`, the VS Code install directory is updating or has leftover update markers. Close normal VS Code windows, wait for the `CodeSetup-stable...` update process to finish, then run:
+
+```powershell
+.\start-deepseek-vscode.bat
+```
+
+If the updater is stuck for a long time, finish, cancel, or repair the VS Code update first. The isolated window uses the same VS Code install directory, and VS Code refuses to start while its installer is incomplete.
 
 ## Project Layout
 

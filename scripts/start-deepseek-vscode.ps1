@@ -120,6 +120,55 @@ function Resolve-CodeLauncher {
     throw "Could not find VS Code launcher. Install VS Code or add code.cmd/Code.exe to PATH."
 }
 
+function Resolve-CodeInstallRoot {
+    param([string]$LauncherPath)
+
+    $fullPath = [System.IO.Path]::GetFullPath($LauncherPath)
+    if ((Split-Path -Leaf $fullPath) -ieq "code.cmd") {
+        return Split-Path -Parent (Split-Path -Parent $fullPath)
+    }
+
+    return Split-Path -Parent $fullPath
+}
+
+function Assert-VsCodeNotUpdating {
+    param([string]$LauncherPath)
+
+    $installRoot = Resolve-CodeInstallRoot -LauncherPath $LauncherPath
+    $updateMarkers = @(
+        (Join-Path $installRoot "updating_version"),
+        (Join-Path $installRoot "new_Code.exe")
+    ) | Where-Object { Test-Path -LiteralPath $_ }
+
+    $setupProcesses = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -like "CodeSetup-*.exe" -or
+            $_.Name -like "CodeSetup-*.tmp" -or
+            $_.CommandLine -match "vscode-stable-user-x64|CodeSetup-stable"
+        } |
+        Select-Object ProcessId, Name
+
+    if ($updateMarkers.Count -gt 0 -or $setupProcesses) {
+        $details = New-Object System.Collections.Generic.List[string]
+        $details.Add("VS Code is currently updating or left an update marker in: $installRoot")
+        if ($updateMarkers.Count -gt 0) {
+            $details.Add("Update marker(s):")
+            foreach ($marker in $updateMarkers) {
+                $details.Add("  $marker")
+            }
+        }
+        if ($setupProcesses) {
+            $details.Add("Update process(es):")
+            foreach ($process in $setupProcesses) {
+                $details.Add("  PID $($process.ProcessId): $($process.Name)")
+            }
+        }
+        $details.Add("Close normal VS Code windows and wait for the updater to finish, then run start-deepseek-vscode.bat again.")
+        $details.Add("If the updater is stuck, finish or cancel the VS Code update before launching the isolated DeepSeek window.")
+        throw ($details -join [Environment]::NewLine)
+    }
+}
+
 function Resolve-CodexCli {
     $command = Get-Command "codex" -ErrorAction SilentlyContinue
     if ($command) {
@@ -672,6 +721,12 @@ if ($CliOnly -and $CliCommand) {
     }
 }
 
+$codeLauncher = $null
+if (-not $CliOnly) {
+    $codeLauncher = Resolve-CodeLauncher
+    Assert-VsCodeNotUpdating -LauncherPath $codeLauncher
+}
+
 Update-ResidentContext
 
 if ($PrepareOnly) {
@@ -699,10 +754,6 @@ if ([string]::IsNullOrWhiteSpace($userDeepSeekApiKey)) {
     throw "Windows user environment variable DEEPSEEK_API_KEY is not set."
 }
 
-$codeLauncher = $null
-if (-not $CliOnly) {
-    $codeLauncher = Resolve-CodeLauncher
-}
 $env:DEEPSEEK_API_KEY = $userDeepSeekApiKey
 $env:CODEX_HOME = $CodexHome
 $env:LOG_REQUESTS = "1"
