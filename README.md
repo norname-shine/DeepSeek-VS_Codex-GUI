@@ -20,7 +20,7 @@
 
 ## 中文版
 
-DeepSeek Codex Bridge 是一个面向 VS Code Codex 工作流的本地兼容桥。它通过本地 Responses 兼容代理，把 DeepSeek 接入 Codex 的桌面体验。默认复用主 VS Code user-data，所以本机登录态、已安装插件和 Codex 面板保持一致，同时使用独立 `CODEX_HOME` 隔离 DeepSeek 模型配置，避免污染你原本的 OpenAI / GPT Codex 配置。
+DeepSeek Codex Bridge 是一个面向 VS Code Codex 工作流的本地兼容桥。它通过本地 Responses 兼容代理，把 DeepSeek 接入 Codex 的桌面体验。默认使用同步式隔离 user-data：启动前从主 VS Code 同步登录态、插件态和相关本地状态，再使用独立 `CODEX_HOME` 隔离 DeepSeek 模型配置，避免污染你原本的 OpenAI / GPT Codex 配置。
 
 它适合希望继续使用 Codex 可视化文件联动、拖拽交互、diff、跳转、引导式任务和插件 / MCP 配置能力，同时又想把部分任务路由给 DeepSeek V4 Pro / Flash 的用户。
 
@@ -63,14 +63,15 @@ Codex 的 VS Code 桌面体验适合真实项目开发，但第三方模型接�
 | 上下文传递不稳定 | 启动时生成常驻项目上下文，同时保留 Codex 聊天窗口、附件、选区和工具结果的最高优先级 |
 | 模型切换麻烦 | 提供 `/D-switch`、`switch flash` 等统一命令别名 |
 | DeepSeek 和 GPT 网络路径冲突 | DeepSeek 上游请求可单独指定 HTTP / HTTPS 代理 |
-| 不想影响原 Codex 配置 | 默认复用主 VS Code 登录态和插件，但使用独立 `CODEX_HOME` 和独立模型配置 |
+| 不想影响原 Codex 配置 | 默认同步主 VS Code 登录态和插件态，但使用独立 `CODEX_HOME` 和独立模型配置 |
 | CLI 交互不透明 | 保留 VS Code Codex 面板、文件窗口联动、diff、跳转和会话体验 |
 | 工作过程不可见 | 注入可见工作流策略，让 DS 给出短进度更新，并在完成后总结文件与 diff |
 | thinking 与工具调用冲突 | 代理缓存并回填 DeepSeek `reasoning_content`，缓存缺失时自动降级以避免断流 |
 
 ## 核心特性
 
-- **分层隔离**：默认复用主 VS Code user-data、登录态、插件和系统凭据；DeepSeek 的 Codex 配置仍放在独立 `CODEX_HOME`。
+- **同步式隔离**：默认把主 VS Code 的登录态、插件态和相关本地状态同步到独立 user-data；DeepSeek 的 Codex 配置仍放在独立 `CODEX_HOME`。
+- **Codex++ 风格插件入口解锁**：默认通过本地 CDP 注入最小前端补丁，尝试把 API provider 会话中的插件入口和安装按钮解锁。
 - **DeepSeek 模型切换**：支持 DeepSeek V4 Pro / Flash，可通过聊天框或 CLI 命令切换。
 - **统一命令解析**：`/D-switch flash`、`D switch flash`、`switch flash`、`switch-flash` 等等价写法走同一套逻辑。
 - **thinking 模式控制**：支持 `think high` / `think max` / `think off`，并在工具调用回合中尽量保持 thinking。
@@ -135,9 +136,27 @@ flowchart LR
 
 ### 3. 在新窗口使用 Codex 面板
 
-打开后的窗口默认使用主 VS Code user-data，因此会沿用本机 VS Code 的扩展安装、Codex 登录态、插件状态和系统代理能力。DeepSeek 的模型 provider、代理地址和常驻上下文仍由独立 `CODEX_HOME` 控制。你可以像平时一样在 Codex 面板里发送任务、附加文件、查看 diff、拖拽文件、使用选区上下文或继续项目会话。
+打开后的窗口默认使用 `.vscode-deepseek-user-data` 独立 user-data。启动脚本会先从主 VS Code user-data 同步登录态、Codex 插件状态、扩展本地状态和浏览器会话相关存储。DeepSeek 的模型 provider、代理地址和常驻上下文仍由独立 `CODEX_HOME` 控制。你可以像平时一样在 Codex 面板里发送任务、附加文件、查看 diff、拖拽文件、使用选区上下文或继续项目会话。
 
 注意：共享登录态不等于账号型 Codex connector 一定会暴露给 DeepSeek API provider 会话。Gmail、Drive、Slack、Notion 等需要账号授权的工具是否可用，最终取决于 Codex 面板是否把它们开放给当前自定义 provider 会话。本项目会同步本地插件 / MCP / connector 配置块，但不能绕过 Codex 的服务端授权边界。
+
+启动时默认还会打开本地 CDP 端口 `9333`，并注入一个 Codex++ 风格的最小前端补丁：它会把插件入口所在 React context 的 `authMethod` 临时切到 `chatgpt`，同时解除 `App unavailable` / `应用不可用` 导致的前端安装按钮禁用。需要关闭时：
+
+```powershell
+.\start-deepseek-vscode.bat -DisableCodexPluginUnlock
+```
+
+如需换端口：
+
+```powershell
+.\start-deepseek-vscode.bat -CodexDebugPort 9334
+```
+
+如需直接使用主 VS Code user-data 而不复制，可以使用：
+
+```powershell
+.\start-deepseek-vscode.bat -VsCodeStateMode shared-user-data
+```
 
 如果你需要一个命名 VS Code profile，可以使用：
 
@@ -404,6 +423,7 @@ LICENSE                               MIT License
 - 这是兼容桥，不是 Codex 官方原生 DeepSeek provider。
 - 原生工作流卡片、diff 卡片和工具事件显示由官方 Codex 扩展控制。
 - 插件、MCP、marketplace、connector 配置可以同步，但最终可用性以 Codex 面板实际暴露为准；账号型 connector 可能不会开放给自定义 API provider 会话。
+- 插件入口解锁是前端补丁；它可以解除 UI 隐藏或禁用，但不能替代服务端授权。
 - 常驻上下文是低优先级项目背景，不替代用户当前明确给出的文件、选区、附件和任务指令。
 - 可见工作流输出依赖模型遵循提示；它不是 Codex 官方原生 reasoning 卡片，也不会展示私有链式推理。
 - thinking 在工具调用中依赖代理内存缓存；代理重启后旧 tool call 的 `reasoning_content` 不再可恢复。
@@ -434,7 +454,7 @@ LICENSE                               MIT License
 
 ## English Version
 
-DeepSeek Codex Bridge is a local compatibility bridge for the VS Code Codex workflow. It routes selected Codex traffic to DeepSeek through a local Responses-compatible proxy. By default, it reuses the main VS Code user-data so local sign-in state, installed extensions, and the Codex panel stay consistent, while DeepSeek model configuration remains isolated in a separate `CODEX_HOME`.
+DeepSeek Codex Bridge is a local compatibility bridge for the VS Code Codex workflow. It routes selected Codex traffic to DeepSeek through a local Responses-compatible proxy. By default, it uses synced isolated user-data: before launch, it copies sign-in state, extension state, and related local storage from the main VS Code user-data, while DeepSeek model configuration remains isolated in a separate `CODEX_HOME`.
 
 It is designed for users who want DeepSeek V4 Pro / Flash inside the VS Code Codex desktop experience, including visual file context, drag-and-drop interaction, diffs, navigation, guided workflows, and plugin / MCP config reuse.
 
@@ -476,14 +496,15 @@ The VS Code Codex desktop workflow is useful for real project work, but third-pa
 | Context may not reach the model reliably | Generates resident project context while keeping chat-window context, attachments, selections, and tool results authoritative |
 | Model switching is slow | Adds `/D-switch`, `switch flash`, and other unified command aliases |
 | DeepSeek and GPT need different network paths | Allows a dedicated HTTP / HTTPS upstream proxy for DeepSeek |
-| Normal Codex config should stay untouched | Reuses main VS Code sign-in state and extensions by default, while keeping an isolated `CODEX_HOME` and model config |
+| Normal Codex config should stay untouched | Syncs main VS Code sign-in and extension state by default, while keeping an isolated `CODEX_HOME` and model config |
 | CLI-only usage feels opaque | Keeps the Codex panel, file linkage, diffs, jumps, and session flow |
 | Work progress is hard to observe | Injects a visible workflow policy so DS gives short progress updates and final diff summaries |
 | thinking can conflict with tool calls | Caches and replays DeepSeek `reasoning_content`; downgrades safely when cache is missing |
 
 ## Features
 
-- **Layered isolation**: reuses the main VS Code user-data, sign-in state, extensions, and OS credentials by default, while keeping DeepSeek Codex config in a separate `CODEX_HOME`.
+- **Synced isolation**: copies main VS Code sign-in state, extension state, and related local storage into dedicated user-data by default, while keeping DeepSeek Codex config in a separate `CODEX_HOME`.
+- **Codex++-style plugin entry unlock**: injects a small local CDP patch by default to unlock plugin entrypoints and install buttons in API provider sessions.
 - **DeepSeek model switching**: DeepSeek V4 Pro / Flash with chat and CLI commands.
 - **Unified command parser**: equivalent forms such as `/D-switch flash`, `D switch flash`, `switch flash`, and `switch-flash` share one parser.
 - **thinking mode control**: supports `think high`, `think max`, and `think off`.
@@ -548,9 +569,27 @@ For day-to-day project development. It keeps the Codex chat panel, files, naviga
 
 ### 3. Use the Codex panel
 
-The launcher uses the main VS Code user-data by default, so it reuses your local VS Code extension installation, Codex sign-in state, extension state, and system proxy behavior. DeepSeek model provider settings, proxy routing, and resident context still live under the isolated `CODEX_HOME`. Use the Codex panel as you normally would: send tasks, attach files, inspect diffs, drag files into context, use selections, and continue project sessions.
+The launcher uses `.vscode-deepseek-user-data` by default. Before launch, it syncs sign-in state, Codex extension state, extension local state, and browser-session-related storage from the main VS Code user-data. DeepSeek model provider settings, proxy routing, and resident context still live under the isolated `CODEX_HOME`. Use the Codex panel as you normally would: send tasks, attach files, inspect diffs, drag files into context, use selections, and continue project sessions.
 
 Note: shared sign-in state does not guarantee that account-authorized Codex connectors are exposed to a DeepSeek API provider session. Tools such as Gmail, Drive, Slack, or Notion depend on Codex-side authorization and tool exposure for the current session. This project syncs local plugin / MCP / connector config blocks, but it cannot bypass Codex service-side authorization boundaries.
+
+By default, the launcher also opens local CDP port `9333` and injects a minimal Codex++-style frontend patch: it temporarily switches the plugin entry React context `authMethod` to `chatgpt`, and unblocks frontend install buttons disabled by `App unavailable` / `应用不可用`. To disable it:
+
+```powershell
+.\start-deepseek-vscode.bat -DisableCodexPluginUnlock
+```
+
+To use a different port:
+
+```powershell
+.\start-deepseek-vscode.bat -CodexDebugPort 9334
+```
+
+To use the main VS Code user-data directly without copying, launch with:
+
+```powershell
+.\start-deepseek-vscode.bat -VsCodeStateMode shared-user-data
+```
 
 If you need a named VS Code profile, use:
 
@@ -815,6 +854,7 @@ LICENSE                               MIT License
 - This is a compatibility bridge, not a native Codex DeepSeek provider.
 - Native workflow cards, diff cards, and tool event rendering are controlled by the official Codex extension.
 - Plugin, MCP, marketplace, and connector config blocks can be synced, but final availability depends on what the Codex panel exposes; account-authorized connectors may not be available to custom API provider sessions.
+- Plugin entry unlock is a frontend patch. It can unblock hidden or disabled UI, but it does not replace server-side authorization.
 - Resident context is project background; explicit user instructions, attached files, and selections still take priority.
 - Visible workflow output depends on model instruction-following; it is not a native Codex reasoning card and does not expose hidden chain-of-thought.
 - thinking in tool workflows depends on proxy memory cache; after a proxy restart, old tool-call `reasoning_content` cannot be recovered.

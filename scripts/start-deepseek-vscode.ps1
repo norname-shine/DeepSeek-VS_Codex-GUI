@@ -20,10 +20,14 @@ param(
     [ValidateSet("on", "off", "override")]
     [string]$VsCodeProxySupport = "on",
 
-    [ValidateSet("shared-user-data", "shared-profile", "isolated-user-data")]
-    [string]$VsCodeStateMode = "shared-user-data",
+    [ValidateSet("shared-user-data", "synced-user-data", "shared-profile", "isolated-user-data")]
+    [string]$VsCodeStateMode = "synced-user-data",
 
     [string]$VsCodeProfileName = "DeepSeek Codex",
+
+    [switch]$DisableCodexPluginUnlock,
+
+    [int]$CodexDebugPort = 9333,
 
     [string[]]$ResidentContextPath = @(),
 
@@ -64,11 +68,14 @@ if ([string]::IsNullOrWhiteSpace($IsolationRoot)) {
 }
 $IsolationRoot = [System.IO.Path]::GetFullPath($IsolationRoot)
 $CodexHome = Join-Path $IsolationRoot "codex-home"
+$MainVsCodeUserDataDir = Join-Path $env:APPDATA "Code"
 $VsCodeUserDataDir = Join-Path $ProjectRoot ".vscode-deepseek-user-data"
 $ConfigPath = Join-Path $CodexHome "config.toml"
 $RealCodexConfigPath = Join-Path $env:USERPROFILE ".codex\config.toml"
 $ProxyOutLog = Join-Path $ProjectRoot "deepseek-vscode-proxy.out.log"
 $ProxyErrLog = Join-Path $ProjectRoot "deepseek-vscode-proxy.err.log"
+$PluginUnlockOutLog = Join-Path $ProjectRoot "deepseek-plugin-unlock.out.log"
+$PluginUnlockErrLog = Join-Path $ProjectRoot "deepseek-plugin-unlock.err.log"
 $ProxyStateDir = Join-Path $ProjectRoot ".deepseek"
 $ActiveModelStateFile = Join-Path $ProxyStateDir "active-model.txt"
 $ThinkingModeStateFile = Join-Path $ProxyStateDir "thinking-mode.txt"
@@ -83,8 +90,11 @@ if ([string]::IsNullOrWhiteSpace($VsCodeProfileName)) {
     $VsCodeProfileName = "DeepSeek Codex"
 }
 $UseSharedVsCodeUserData = $VsCodeStateMode -eq "shared-user-data"
+$UseSyncedVsCodeUserData = $VsCodeStateMode -eq "synced-user-data"
 $UseSharedVsCodeProfile = $VsCodeStateMode -eq "shared-profile"
 $UseIsolatedVsCodeUserData = $VsCodeStateMode -eq "isolated-user-data"
+$UseDedicatedVsCodeUserData = $UseSyncedVsCodeUserData -or $UseIsolatedVsCodeUserData
+$CodexPluginUnlockEnabled = -not $DisableCodexPluginUnlock
 $ProxyUri = [System.Uri]$BaseUrl
 $HealthUrl = "$BaseUrl/health"
 
@@ -219,6 +229,27 @@ function Resolve-CodexCli {
     throw "Could not find Codex CLI. Install the Codex VS Code extension or add codex to PATH."
 }
 
+function Start-CodexPluginUnlock {
+    if (-not $CodexPluginUnlockEnabled) {
+        return
+    }
+
+    $unlockScript = Join-Path $ScriptDir "codex-plugin-unlock.mjs"
+    if (-not (Test-Path -LiteralPath $unlockScript)) {
+        Write-Warning "Codex plugin unlock script not found: $unlockScript"
+        return
+    }
+
+    Remove-Item -LiteralPath $PluginUnlockOutLog, $PluginUnlockErrLog -ErrorAction SilentlyContinue
+    Start-Process `
+        -FilePath "node" `
+        -ArgumentList "`"$unlockScript`" $CodexDebugPort" `
+        -WorkingDirectory $ProjectRoot `
+        -RedirectStandardOutput $PluginUnlockOutLog `
+        -RedirectStandardError $PluginUnlockErrLog `
+        -WindowStyle Hidden | Out-Null
+}
+
 function Stop-PortProcess {
     param([int]$Port)
 
@@ -331,6 +362,57 @@ function Remove-IsolatedVsCodeStatePath {
         Assert-PathUnderDirectory -BaseDirectory $VsCodeUserDataDir -TargetPath $target
         Remove-Item -LiteralPath $target -Recurse -Force
         Write-Host "Removed isolated VS Code state: $RelativePath"
+    }
+}
+
+function Copy-MainVsCodeStatePath {
+    param([string]$RelativePath)
+
+    $source = Join-Path $MainVsCodeUserDataDir $RelativePath
+    $target = Join-Path $VsCodeUserDataDir $RelativePath
+
+    if (-not (Test-Path -LiteralPath $source)) {
+        return
+    }
+
+    Assert-PathUnderDirectory -BaseDirectory $VsCodeUserDataDir -TargetPath $target
+    if (Test-Path -LiteralPath $target) {
+        Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    $parent = Split-Path -Parent $target
+    if (-not [string]::IsNullOrWhiteSpace($parent)) {
+        New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    }
+
+    Copy-Item -LiteralPath $source -Destination $target -Recurse -Force -ErrorAction Stop
+}
+
+function Sync-MainVsCodeUserData {
+    New-Item -ItemType Directory -Force -Path $VsCodeUserDataDir | Out-Null
+
+    foreach ($relativePath in @(
+        "User\globalStorage",
+        "User\profiles",
+        "User\settings.json",
+        "User\chatLanguageModels.json",
+        "Local Storage",
+        "Session Storage",
+        "Service Worker",
+        "blob_storage",
+        "Local State",
+        "Preferences",
+        "SharedStorage",
+        "SharedStorage-wal",
+        "machineid",
+        "languagepacks.json"
+    )) {
+        try {
+            Copy-MainVsCodeStatePath -RelativePath $relativePath
+        }
+        catch {
+            Write-Warning "Could not sync VS Code state '$relativePath': $($_.Exception.Message)"
+        }
     }
 }
 
@@ -470,7 +552,7 @@ function Get-ConfigBlockStats {
     return $stats
 }
 
-function Test-ProxyHealth {
+function Get-ProxyHealthStatus {
     try {
         $response = Invoke-WebRequest -Uri $HealthUrl -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
         return "healthy ($($response.StatusCode))"
@@ -504,6 +586,10 @@ function Write-DoctorReport {
     if ($UseSharedVsCodeUserData) {
         Write-Host "  VS Code user data: main VS Code user data"
     }
+    elseif ($UseSyncedVsCodeUserData) {
+        Write-Host "  VS Code user data: $VsCodeUserDataDir"
+        Write-Host "  Synced from: $MainVsCodeUserDataDir"
+    }
     elseif ($UseSharedVsCodeProfile) {
         Write-Host "  VS Code profile: $VsCodeProfileName"
     }
@@ -512,13 +598,17 @@ function Write-DoctorReport {
     }
     Write-Host "  CODEX_HOME: $CodexHome"
     Write-Host "  Codex extension: $(Get-CodexExtensionStatus)"
+    Write-Host "  Codex plugin unlock: $CodexPluginUnlockEnabled"
+    if ($CodexPluginUnlockEnabled) {
+        Write-Host "  Codex debug port: $CodexDebugPort"
+    }
     Write-Host ""
     Write-Host "Model provider"
     Write-Host "  Active model: $(Read-ActiveModel)"
     Write-Host "  Provider: deepseek"
     Write-Host "  Base URL: $BaseUrl"
     Write-Host "  Wire API: responses"
-    Write-Host "  Proxy health: $(Test-ProxyHealth)"
+    Write-Host "  Proxy health: $(Get-ProxyHealthStatus)"
     Write-Host ""
     Write-Host "Config sync"
     Write-Host "  Main config: $RealCodexConfigPath"
@@ -850,11 +940,14 @@ if ((-not $ModelExplicit) -and (Test-Path -LiteralPath $ActiveModelStateFile)) {
 
 Set-Location $ProjectRoot
 Write-IsolatedConfig
-if ($UseIsolatedVsCodeUserData) {
-    Set-IsolatedVsCodeSettings
-}
 
 if ($CliOnly -and $CliCommand) {
+    if ($UseSyncedVsCodeUserData) {
+        Sync-MainVsCodeUserData
+    }
+    if ($UseDedicatedVsCodeUserData) {
+        Set-IsolatedVsCodeSettings
+    }
     if (Invoke-CliCommand) {
         return
     }
@@ -869,6 +962,12 @@ if (-not $CliOnly) {
 Update-ResidentContext
 
 if ($PrepareOnly) {
+    if ($UseSyncedVsCodeUserData) {
+        Sync-MainVsCodeUserData
+    }
+    if ($UseDedicatedVsCodeUserData) {
+        Set-IsolatedVsCodeSettings
+    }
     Write-Host "Prepared isolated DeepSeek Codex config."
     Write-Host "  Config: $ConfigPath"
     Write-Host "  CODEX_HOME: $CodexHome"
@@ -876,9 +975,16 @@ if ($PrepareOnly) {
     Write-Host "  Sandbox: $SandboxMode"
     Write-Host "  Approval policy: $ApprovalPolicy"
     Write-Host "  Response language: $ResponseLanguage"
+    Write-Host "  Codex plugin unlock: $CodexPluginUnlockEnabled"
+    if ($CodexPluginUnlockEnabled) {
+        Write-Host "  Codex debug port: $CodexDebugPort"
+    }
     Write-Host "  VS Code state mode: $VsCodeStateMode"
     if ($UseSharedVsCodeUserData) {
         Write-Host "  VS Code user data: main VS Code user data"
+    } elseif ($UseSyncedVsCodeUserData) {
+        Write-Host "  VS Code user data: $VsCodeUserDataDir"
+        Write-Host "  Synced from: $MainVsCodeUserDataDir"
     } elseif ($UseSharedVsCodeProfile) {
         Write-Host "  VS Code profile: $VsCodeProfileName"
     } else {
@@ -974,7 +1080,7 @@ else {
     Write-Host "DeepSeek proxy is already healthy on $HealthUrl."
 }
 
-if ($UseIsolatedVsCodeUserData) {
+if ($UseDedicatedVsCodeUserData) {
     New-Item -ItemType Directory -Force -Path $VsCodeUserDataDir | Out-Null
 }
 
@@ -983,11 +1089,18 @@ if ($RestartIsolatedVsCode) {
     Start-Sleep -Milliseconds 800
 }
 
-if ($ResetVsCodeState -and (-not $UseIsolatedVsCodeUserData)) {
-    Write-Warning "-ResetVsCodeState only resets the isolated-user-data mode. It is ignored in $VsCodeStateMode mode."
+if ($ResetVsCodeState -and (-not $UseDedicatedVsCodeUserData)) {
+    Write-Warning "-ResetVsCodeState only resets dedicated user-data modes. It is ignored in $VsCodeStateMode mode."
 }
 elseif ($ResetVsCodeState) {
     Reset-IsolatedVsCodeState
+}
+
+if ($UseSyncedVsCodeUserData) {
+    Sync-MainVsCodeUserData
+}
+if ($UseDedicatedVsCodeUserData) {
+    Set-IsolatedVsCodeSettings
 }
 
 Write-Host ""
@@ -1000,6 +1113,9 @@ Write-Host "  CODEX_HOME: $CodexHome"
 Write-Host "  VS Code state mode: $VsCodeStateMode"
 if ($UseSharedVsCodeUserData) {
     Write-Host "  VS Code user data: main VS Code user data"
+} elseif ($UseSyncedVsCodeUserData) {
+    Write-Host "  VS Code user data: $VsCodeUserDataDir"
+    Write-Host "  Synced from: $MainVsCodeUserDataDir"
 } elseif ($UseSharedVsCodeProfile) {
     Write-Host "  VS Code profile: $VsCodeProfileName"
 } else {
@@ -1012,7 +1128,11 @@ Write-Host "  Model: $Model ($UpstreamModel)"
 Write-Host "  Sandbox: $SandboxMode"
 Write-Host "  Approval policy: $ApprovalPolicy"
 Write-Host "  Response language: $ResponseLanguage"
-if ($UseIsolatedVsCodeUserData) {
+Write-Host "  Codex plugin unlock: $CodexPluginUnlockEnabled"
+if ($CodexPluginUnlockEnabled) {
+    Write-Host "  Codex debug port: $CodexDebugPort"
+}
+if ($UseDedicatedVsCodeUserData) {
     Write-Host "  VS Code proxy support: $VsCodeProxySupport"
 }
 Write-Host "  Reset VS Code state: $ResetVsCodeState"
@@ -1047,12 +1167,21 @@ if ($CliOnly) {
 Write-Host ""
 Write-Host "This does not modify the real Codex config: $RealCodexConfigPath"
 
+$codeArgs = @("--new-window")
+if ($CodexPluginUnlockEnabled) {
+    $codeArgs += "--remote-debugging-port=$CodexDebugPort"
+}
 if ($UseSharedVsCodeUserData) {
-    & $codeLauncher --new-window $ProjectRoot
+    $codeArgs += $ProjectRoot
 }
 elseif ($UseSharedVsCodeProfile) {
-    & $codeLauncher --new-window --profile $VsCodeProfileName $ProjectRoot
+    $codeArgs += @("--profile", $VsCodeProfileName, $ProjectRoot)
 }
 else {
-    & $codeLauncher --new-window --user-data-dir $VsCodeUserDataDir $ProjectRoot
+    $codeArgs += @("--user-data-dir", $VsCodeUserDataDir, $ProjectRoot)
+}
+
+& $codeLauncher @codeArgs
+if ($CodexPluginUnlockEnabled) {
+    Start-CodexPluginUnlock
 }
