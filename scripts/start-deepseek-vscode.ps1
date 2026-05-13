@@ -120,6 +120,17 @@ function Resolve-CodeLauncher {
     throw "Could not find VS Code launcher. Install VS Code or add code.cmd/Code.exe to PATH."
 }
 
+function Stop-LauncherWithMessage {
+    param(
+        [string]$Message,
+        [int]$ExitCode = 1
+    )
+
+    Write-Host ""
+    Write-Host $Message -ForegroundColor Red
+    exit $ExitCode
+}
+
 function Resolve-CodeInstallRoot {
     param([string]$LauncherPath)
 
@@ -135,18 +146,18 @@ function Assert-VsCodeNotUpdating {
     param([string]$LauncherPath)
 
     $installRoot = Resolve-CodeInstallRoot -LauncherPath $LauncherPath
-    $updateMarkers = @(
+    $updateMarkers = @(@(
         (Join-Path $installRoot "updating_version"),
         (Join-Path $installRoot "new_Code.exe")
-    ) | Where-Object { Test-Path -LiteralPath $_ }
+    ) | Where-Object { Test-Path -LiteralPath $_ })
 
-    $setupProcesses = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    $setupProcesses = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
         Where-Object {
             $_.Name -like "CodeSetup-*.exe" -or
             $_.Name -like "CodeSetup-*.tmp" -or
             $_.CommandLine -match "vscode-stable-user-x64|CodeSetup-stable"
         } |
-        Select-Object ProcessId, Name
+        Select-Object ProcessId, Name)
 
     if ($updateMarkers.Count -gt 0 -or $setupProcesses) {
         $details = New-Object System.Collections.Generic.List[string]
@@ -165,7 +176,7 @@ function Assert-VsCodeNotUpdating {
         }
         $details.Add("Close normal VS Code windows and wait for the updater to finish, then run start-deepseek-vscode.bat again.")
         $details.Add("If the updater is stuck, finish or cancel the VS Code update before launching the isolated DeepSeek window.")
-        throw ($details -join [Environment]::NewLine)
+        Stop-LauncherWithMessage -Message ($details -join [Environment]::NewLine) -ExitCode 2
     }
 }
 
