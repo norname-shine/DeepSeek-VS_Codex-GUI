@@ -11,6 +11,10 @@ if /I "%FIRST_ARG%"=="help" (
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-deepseek-vscode.ps1" -CliOnly -CliCommand help
   goto done
 )
+if /I "%FIRST_ARG%"=="doctor" (
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-deepseek-vscode.ps1" -CliOnly -CliCommand doctor
+  goto done
+)
 if /I "%FIRST_ARG%"=="switch" (
   if /I "%SECOND_ARG%"=="pro" (
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-deepseek-vscode.ps1" -CliOnly -CliCommand switch-pro

@@ -47,7 +47,7 @@ param(
 
     [switch]$CliOnly,
 
-    [ValidateSet("", "help", "switch", "switch-pro", "switch-flash", "model", "context", "think", "think-off", "think-high", "think-max")]
+    [ValidateSet("", "help", "doctor", "switch", "switch-pro", "switch-flash", "model", "context", "think", "think-off", "think-high", "think-max")]
     [string]$CliCommand = "",
 
     [switch]$PrepareOnly
@@ -438,6 +438,100 @@ function Get-PluginConfigBlocks {
     return ([Environment]::NewLine + ($result.ToArray() -join [Environment]::NewLine) + [Environment]::NewLine)
 }
 
+function Get-ConfigBlockStats {
+    param([string]$Path)
+
+    $stats = [ordered]@{
+        plugins = 0
+        marketplaces = 0
+        mcp = 0
+        connectors = 0
+    }
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return $stats
+    }
+
+    foreach ($line in [System.IO.File]::ReadLines($Path)) {
+        if ($line -match '^\s*\[plugins\.') {
+            $stats.plugins++
+        }
+        elseif ($line -match '^\s*\[marketplaces\.') {
+            $stats.marketplaces++
+        }
+        elseif ($line -match '^\s*\[(mcp|mcp_servers|mcpServers)\.') {
+            $stats.mcp++
+        }
+        elseif ($line -match '^\s*\[connectors\.') {
+            $stats.connectors++
+        }
+    }
+
+    return $stats
+}
+
+function Test-ProxyHealth {
+    try {
+        $response = Invoke-WebRequest -Uri $HealthUrl -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+        return "healthy ($($response.StatusCode))"
+    }
+    catch {
+        return "not reachable ($($_.Exception.Message))"
+    }
+}
+
+function Get-CodexExtensionStatus {
+    $extensionsRoot = Join-Path $env:USERPROFILE ".vscode\extensions"
+    $extensions = @(Get-ChildItem -Path $extensionsRoot -Directory -Filter "openai.chatgpt-*" -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending
+    )
+
+    if (-not $extensions -or $extensions.Count -eq 0) {
+        return "not found in $extensionsRoot"
+    }
+
+    return "found $($extensions[0].Name)"
+}
+
+function Write-DoctorReport {
+    $realStats = Get-ConfigBlockStats -Path $RealCodexConfigPath
+    $isolatedStats = Get-ConfigBlockStats -Path $ConfigPath
+
+    Write-Host "DeepSeek Codex doctor"
+    Write-Host ""
+    Write-Host "Runtime"
+    Write-Host "  VS Code state mode: $VsCodeStateMode"
+    if ($UseSharedVsCodeUserData) {
+        Write-Host "  VS Code user data: main VS Code user data"
+    }
+    elseif ($UseSharedVsCodeProfile) {
+        Write-Host "  VS Code profile: $VsCodeProfileName"
+    }
+    else {
+        Write-Host "  VS Code user data: $VsCodeUserDataDir"
+    }
+    Write-Host "  CODEX_HOME: $CodexHome"
+    Write-Host "  Codex extension: $(Get-CodexExtensionStatus)"
+    Write-Host ""
+    Write-Host "Model provider"
+    Write-Host "  Active model: $(Read-ActiveModel)"
+    Write-Host "  Provider: deepseek"
+    Write-Host "  Base URL: $BaseUrl"
+    Write-Host "  Wire API: responses"
+    Write-Host "  Proxy health: $(Test-ProxyHealth)"
+    Write-Host ""
+    Write-Host "Config sync"
+    Write-Host "  Main config: $RealCodexConfigPath"
+    Write-Host "    plugins=$($realStats.plugins) marketplaces=$($realStats.marketplaces) mcp=$($realStats.mcp) connectors=$($realStats.connectors)"
+    Write-Host "  DeepSeek config: $ConfigPath"
+    Write-Host "    plugins=$($isolatedStats.plugins) marketplaces=$($isolatedStats.marketplaces) mcp=$($isolatedStats.mcp) connectors=$($isolatedStats.connectors)"
+    Write-Host ""
+    Write-Host "Boundary"
+    Write-Host "  This project can reuse VS Code sign-in state and sync local config blocks."
+    Write-Host "  Account-authorized Codex connectors may still be hidden from a custom API provider session."
+    Write-Host "  If Codex shows no tools in the DeepSeek chat, use local MCP servers or official Codex/GPT for account connector tasks."
+}
+
 function Add-ExistingContextPath {
     param(
         [System.Collections.Generic.List[string]]$Paths,
@@ -659,6 +753,7 @@ function Invoke-CliCommand {
     switch ($CliCommand) {
         "help" {
             Write-Host "DeepSeek Codex CLI commands:"
+            Write-Host "  start-deepseek-cli.bat doctor        Diagnose provider, plugin, MCP, and proxy state"
             Write-Host "  start-deepseek-cli.bat switch        Toggle Pro / Flash"
             Write-Host "  start-deepseek-cli.bat switch flash  Switch to DeepSeek V4 Flash"
             Write-Host "  start-deepseek-cli.bat switch pro    Switch to DeepSeek V4 Pro"
@@ -673,6 +768,10 @@ function Invoke-CliCommand {
             Write-Host "  start-deepseek-cli.bat think-off     Disable thinking"
             Write-Host "  start-deepseek-cli.bat think-high    Enable thinking high"
             Write-Host "  start-deepseek-cli.bat think-max     Enable thinking max"
+            return $true
+        }
+        "doctor" {
+            Write-DoctorReport
             return $true
         }
         "model" {

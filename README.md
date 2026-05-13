@@ -137,6 +137,8 @@ flowchart LR
 
 打开后的窗口默认使用主 VS Code user-data，因此会沿用本机 VS Code 的扩展安装、Codex 登录态、插件状态和系统代理能力。DeepSeek 的模型 provider、代理地址和常驻上下文仍由独立 `CODEX_HOME` 控制。你可以像平时一样在 Codex 面板里发送任务、附加文件、查看 diff、拖拽文件、使用选区上下文或继续项目会话。
 
+注意：共享登录态不等于账号型 Codex connector 一定会暴露给 DeepSeek API provider 会话。Gmail、Drive、Slack、Notion 等需要账号授权的工具是否可用，最终取决于 Codex 面板是否把它们开放给当前自定义 provider 会话。本项目会同步本地插件 / MCP / connector 配置块，但不能绕过 Codex 的服务端授权边界。
+
 如果你需要一个命名 VS Code profile，可以使用：
 
 ```powershell
@@ -249,6 +251,7 @@ Codex CLI 会优先拦截 `/xxx` 命令，所以不要在 CLI 交互界面里输
 
 ```powershell
 .\start-deepseek-cli.bat help
+.\start-deepseek-cli.bat doctor
 .\start-deepseek-cli.bat switch
 .\start-deepseek-cli.bat switch flash
 .\start-deepseek-cli.bat switch pro
@@ -263,6 +266,8 @@ Codex CLI 会优先拦截 `/xxx` 命令，所以不要在 CLI 交互界面里输
 ```
 
 在 CLI 交互会话里，也可以直接发送 `help`、`model`、`switch flash`、`switch pro`、`think max`、`think high` 或 `think off`；本地代理会把它们当成控制指令，不会转给模型生成普通回答。正在运行中的 Codex CLI 底部状态栏不会热刷新，所以它可能仍显示启动时的模型名。实际请求会由本地代理按最新状态文件路由；新开 CLI / VS Code 会读取更新后的隔离配置。
+
+`doctor` 用来诊断当前启动模式、Codex 扩展、DeepSeek provider、proxy 健康状态，以及主配置和 DeepSeek 配置中的插件 / MCP / connector 同步数量。它不能证明账号型 connector 一定可用，但可以快速区分“配置没同步”和“Codex 没向自定义 provider 暴露账号工具”。
 
 启动脚本会在代理代码变化时自动重启本地代理。如果已打开的 CLI 仍把 `help`、`switch flash` 等控制句当成普通问题，请运行：
 
@@ -398,7 +403,7 @@ LICENSE                               MIT License
 
 - 这是兼容桥，不是 Codex 官方原生 DeepSeek provider。
 - 原生工作流卡片、diff 卡片和工具事件显示由官方 Codex 扩展控制。
-- 插件、MCP、marketplace、connector 配置可以同步，但最终可用性以 Codex 面板实际暴露为准。
+- 插件、MCP、marketplace、connector 配置可以同步，但最终可用性以 Codex 面板实际暴露为准；账号型 connector 可能不会开放给自定义 API provider 会话。
 - 常驻上下文是低优先级项目背景，不替代用户当前明确给出的文件、选区、附件和任务指令。
 - 可见工作流输出依赖模型遵循提示；它不是 Codex 官方原生 reasoning 卡片，也不会展示私有链式推理。
 - thinking 在工具调用中依赖代理内存缓存；代理重启后旧 tool call 的 `reasoning_content` 不再可恢复。
@@ -545,6 +550,8 @@ For day-to-day project development. It keeps the Codex chat panel, files, naviga
 
 The launcher uses the main VS Code user-data by default, so it reuses your local VS Code extension installation, Codex sign-in state, extension state, and system proxy behavior. DeepSeek model provider settings, proxy routing, and resident context still live under the isolated `CODEX_HOME`. Use the Codex panel as you normally would: send tasks, attach files, inspect diffs, drag files into context, use selections, and continue project sessions.
 
+Note: shared sign-in state does not guarantee that account-authorized Codex connectors are exposed to a DeepSeek API provider session. Tools such as Gmail, Drive, Slack, or Notion depend on Codex-side authorization and tool exposure for the current session. This project syncs local plugin / MCP / connector config blocks, but it cannot bypass Codex service-side authorization boundaries.
+
 If you need a named VS Code profile, use:
 
 ```powershell
@@ -655,6 +662,7 @@ Codex CLI intercepts `/xxx` commands before they reach the proxy, so do not type
 
 ```powershell
 .\start-deepseek-cli.bat help
+.\start-deepseek-cli.bat doctor
 .\start-deepseek-cli.bat switch
 .\start-deepseek-cli.bat switch flash
 .\start-deepseek-cli.bat switch pro
@@ -669,6 +677,8 @@ Codex CLI intercepts `/xxx` commands before they reach the proxy, so do not type
 ```
 
 Inside an interactive CLI session, you can also send `help`, `model`, `switch flash`, `switch pro`, `think max`, `think high`, or `think off`; the local proxy treats them as control commands instead of forwarding them as normal model prompts. The status line of an already-running Codex CLI session does not hot-refresh, so it may still show the model used at startup. Actual requests are routed by the local proxy using the latest state file; new CLI / VS Code sessions read the updated isolated config.
+
+`doctor` diagnoses the current VS Code state mode, Codex extension status, DeepSeek provider, proxy health, and plugin / MCP / connector sync counts between the main and DeepSeek configs. It cannot prove that account-authorized connectors are available, but it helps separate “config was not synced” from “Codex did not expose account tools to the custom provider session.”
 
 The startup script automatically restarts the local proxy when proxy code changes. If an already-open CLI still treats `help` or `switch flash` as a normal prompt, run:
 
@@ -804,7 +814,7 @@ LICENSE                               MIT License
 
 - This is a compatibility bridge, not a native Codex DeepSeek provider.
 - Native workflow cards, diff cards, and tool event rendering are controlled by the official Codex extension.
-- Plugin, MCP, marketplace, and connector config blocks can be synced, but final availability depends on what the Codex panel exposes.
+- Plugin, MCP, marketplace, and connector config blocks can be synced, but final availability depends on what the Codex panel exposes; account-authorized connectors may not be available to custom API provider sessions.
 - Resident context is project background; explicit user instructions, attached files, and selections still take priority.
 - Visible workflow output depends on model instruction-following; it is not a native Codex reasoning card and does not expose hidden chain-of-thought.
 - thinking in tool workflows depends on proxy memory cache; after a proxy restart, old tool-call `reasoning_content` cannot be recovered.
