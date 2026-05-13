@@ -39,6 +39,36 @@ const payload = String.raw`
     return true;
   }
 
+  function spoofAllAuthContexts() {
+    let changed = 0;
+    const nodes = [document.body, ...document.querySelectorAll("button, a, nav, main, section, div, [role='button'], [role='tab'], [role='navigation']")].filter(Boolean);
+    for (const node of nodes) {
+      const auth = authContextValueFrom(node);
+      if (auth && auth.authMethod !== "chatgpt") {
+        auth.setAuthMethod("chatgpt");
+        changed += 1;
+      }
+    }
+    return changed;
+  }
+
+  function hideApiLoginPluginWarning() {
+    const patterns = [
+      /使用\s*ChatGPT\s*账户登录以使用插件/i,
+      /使用\s*API\s*密钥登录时无法使用插件/i,
+      /ChatGPT account.*plugins/i,
+      /API key.*plugins/i,
+    ];
+    document.querySelectorAll("div, section, aside, [role='alert'], [data-testid]").forEach((node) => {
+      const text = (node.textContent || "").replace(/\s+/g, " ").trim();
+      if (!text || text.length > 300) return;
+      if (patterns.some((pattern) => pattern.test(text))) {
+        node.dataset.deepseekPluginUnlockHidden = "true";
+        node.style.display = "none";
+      }
+    });
+  }
+
   function pluginEntryButton() {
     const byIcon = document.querySelector(selectors.pluginNavButton + " " + selectors.pluginSvgPath)?.closest("button");
     if (byIcon) return byIcon;
@@ -88,8 +118,10 @@ const payload = String.raw`
   }
 
   function tick() {
+    spoofAllAuthContexts();
     enablePluginEntry();
     unblockPluginInstallButtons();
+    hideApiLoginPluginWarning();
   }
 
   tick();
