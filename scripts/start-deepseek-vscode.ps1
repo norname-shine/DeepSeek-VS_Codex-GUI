@@ -20,6 +20,11 @@ param(
     [ValidateSet("on", "off", "override")]
     [string]$VsCodeProxySupport = "on",
 
+    [ValidateSet("shared-profile", "isolated-user-data")]
+    [string]$VsCodeStateMode = "shared-profile",
+
+    [string]$VsCodeProfileName = "DeepSeek Codex",
+
     [string[]]$ResidentContextPath = @(),
 
     [string]$ResidentContextPrompt = "Optional resident project background for DeepSeek Codex. Treat Codex chat-window context, attached files, selected code, tool results, and the latest user message as authoritative.",
@@ -73,6 +78,11 @@ $ProxyScriptPath = Join-Path $ProjectRoot "src\deepseek-responses-proxy.mjs"
 $ResidentContextFile = Join-Path $ProxyStateDir "resident-context.md"
 $BaseUrl = $BaseUrl.TrimEnd("/")
 $DeepSeekProxyUrl = $DeepSeekProxyUrl.Trim()
+$VsCodeProfileName = $VsCodeProfileName.Trim()
+if ([string]::IsNullOrWhiteSpace($VsCodeProfileName)) {
+    $VsCodeProfileName = "DeepSeek Codex"
+}
+$UseSharedVsCodeProfile = $VsCodeStateMode -eq "shared-profile"
 $ProxyUri = [System.Uri]$BaseUrl
 $HealthUrl = "$BaseUrl/health"
 
@@ -256,10 +266,17 @@ function Add-NoProxyEntry {
 }
 
 function Stop-IsolatedVsCode {
-    $escapedUserDataDir = [regex]::Escape($VsCodeUserDataDir)
     $allProcesses = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue
-    $rootProcesses = $allProcesses |
-        Where-Object { $_.CommandLine -match $escapedUserDataDir }
+    if ($UseSharedVsCodeProfile) {
+        $escapedProfileName = [regex]::Escape($VsCodeProfileName)
+        $rootProcesses = $allProcesses |
+            Where-Object { $_.CommandLine -match "--profile" -and $_.CommandLine -match $escapedProfileName }
+    }
+    else {
+        $escapedUserDataDir = [regex]::Escape($VsCodeUserDataDir)
+        $rootProcesses = $allProcesses |
+            Where-Object { $_.CommandLine -match $escapedUserDataDir }
+    }
     $processIds = New-Object System.Collections.Generic.HashSet[int]
 
     foreach ($process in $rootProcesses) {
@@ -728,7 +745,9 @@ if ((-not $ModelExplicit) -and (Test-Path -LiteralPath $ActiveModelStateFile)) {
 
 Set-Location $ProjectRoot
 Write-IsolatedConfig
-Set-IsolatedVsCodeSettings
+if (-not $UseSharedVsCodeProfile) {
+    Set-IsolatedVsCodeSettings
+}
 
 if ($CliOnly -and $CliCommand) {
     if (Invoke-CliCommand) {
@@ -752,7 +771,12 @@ if ($PrepareOnly) {
     Write-Host "  Sandbox: $SandboxMode"
     Write-Host "  Approval policy: $ApprovalPolicy"
     Write-Host "  Response language: $ResponseLanguage"
-    Write-Host "  VS Code proxy support: $VsCodeProxySupport"
+    Write-Host "  VS Code state mode: $VsCodeStateMode"
+    if ($UseSharedVsCodeProfile) {
+        Write-Host "  VS Code profile: $VsCodeProfileName"
+    } else {
+        Write-Host "  VS Code proxy support: $VsCodeProxySupport"
+    }
     if ($ResidentContextEnabled) {
         Write-Host "  Resident project context: $ResidentContextFile"
     } else {
@@ -843,14 +867,19 @@ else {
     Write-Host "DeepSeek proxy is already healthy on $HealthUrl."
 }
 
-New-Item -ItemType Directory -Force -Path $VsCodeUserDataDir | Out-Null
+if (-not $UseSharedVsCodeProfile) {
+    New-Item -ItemType Directory -Force -Path $VsCodeUserDataDir | Out-Null
+}
 
 if ($RestartIsolatedVsCode) {
     Stop-IsolatedVsCode
     Start-Sleep -Milliseconds 800
 }
 
-if ($ResetVsCodeState) {
+if ($ResetVsCodeState -and $UseSharedVsCodeProfile) {
+    Write-Warning "-ResetVsCodeState only resets the isolated user-data mode. It is ignored in shared-profile mode."
+}
+elseif ($ResetVsCodeState) {
     Reset-IsolatedVsCodeState
 }
 
@@ -861,7 +890,12 @@ if ($CliOnly) {
     Write-Host "Launching isolated VS Code for DeepSeek Codex."
 }
 Write-Host "  CODEX_HOME: $CodexHome"
-Write-Host "  VS Code user data: $VsCodeUserDataDir"
+Write-Host "  VS Code state mode: $VsCodeStateMode"
+if ($UseSharedVsCodeProfile) {
+    Write-Host "  VS Code profile: $VsCodeProfileName"
+} else {
+    Write-Host "  VS Code user data: $VsCodeUserDataDir"
+}
 if (-not $CliOnly) {
     Write-Host "  VS Code launcher: $codeLauncher"
 }
@@ -869,7 +903,9 @@ Write-Host "  Model: $Model ($UpstreamModel)"
 Write-Host "  Sandbox: $SandboxMode"
 Write-Host "  Approval policy: $ApprovalPolicy"
 Write-Host "  Response language: $ResponseLanguage"
-Write-Host "  VS Code proxy support: $VsCodeProxySupport"
+if (-not $UseSharedVsCodeProfile) {
+    Write-Host "  VS Code proxy support: $VsCodeProxySupport"
+}
 Write-Host "  Reset VS Code state: $ResetVsCodeState"
 Write-Host "  Active model state: $ActiveModelStateFile"
 Write-Host "  Thinking mode: $(Read-ThinkingMode)"
@@ -902,4 +938,9 @@ if ($CliOnly) {
 Write-Host ""
 Write-Host "This does not modify the real Codex config: $RealCodexConfigPath"
 
-& $codeLauncher --new-window --user-data-dir $VsCodeUserDataDir $ProjectRoot
+if ($UseSharedVsCodeProfile) {
+    & $codeLauncher --new-window --profile $VsCodeProfileName $ProjectRoot
+}
+else {
+    & $codeLauncher --new-window --user-data-dir $VsCodeUserDataDir $ProjectRoot
+}
