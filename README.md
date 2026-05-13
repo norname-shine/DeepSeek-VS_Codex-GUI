@@ -65,6 +65,7 @@ Codex 的 VS Code 桌面体验适合真实项目开发，但第三方模型接�
 | DeepSeek 和 GPT 网络路径冲突 | DeepSeek 上游请求可单独指定 HTTP / HTTPS 代理 |
 | 不想影响原 Codex 环境 | 使用隔离 VS Code profile、独立 `CODEX_HOME` 和独立配置 |
 | CLI 交互不透明 | 保留 VS Code Codex 面板、文件窗口联动、diff、跳转和会话体验 |
+| 工作过程不可见 | 注入可见工作流策略，让 DS 给出短进度更新，并在完成后总结文件与 diff |
 | thinking 与工具调用冲突 | 代理缓存并回填 DeepSeek `reasoning_content`，缓存缺失时自动降级以避免断流 |
 
 ## 核心特性
@@ -74,6 +75,7 @@ Codex 的 VS Code 桌面体验适合真实项目开发，但第三方模型接�
 - **统一命令解析**：`/D-switch flash`、`D switch flash`、`switch flash`、`switch-flash` 等等价写法走同一套逻辑。
 - **thinking 模式控制**：支持 `think high` / `think max` / `think off`，并在工具调用回合中尽量保持 thinking。
 - **reasoning_content 回填**：工具调用时缓存 DeepSeek 返回的 `reasoning_content`，下一轮工具结果回传时自动补回。
+- **可见工作流输出**：默认要求 DS 在工作中给出短进度更新，完成后整理文件变更、行为变化、diff 摘要和验证结果。
 - **常驻项目上下文**：默认生成 `.deepseek/resident-context.md`，作为低优先级项目背景材料。
 - **独立网络代理**：DeepSeek 上游请求可单独走代理，不影响原本 OpenAI / GPT 请求路径。
 - **VS Code Codex 工作流保留**：继续使用 Codex 面板、文件上下文、拖拽、选区、diff、跳转和引导功能。
@@ -161,6 +163,8 @@ flowchart LR
 这些指令由本地 DeepSeek 代理处理，不需要手动修改配置文件。代理也支持等价短写：`help`、`model`、`switch flash`、`switch pro`、`think max`、`think high`、`think off`。
 
 说明：Codex CLI 状态栏里的 reasoning effort 是 Codex 自己的显示项，不是 DeepSeek 的原生档位。DeepSeek V4 的 thinking 由 `thinking.enabled/disabled` 和 `reasoning_effort=high|max` 控制。工具工作流中，代理会缓存 DeepSeek 返回的 `reasoning_content` 并在工具结果回合自动回填；如果代理重启或缓存缺失，本次请求会自动降级为 `thinking disabled`，避免断流。
+
+默认还会注入一条可见工作流策略：DS 工作时应输出简短进度说明，完成后总结改动文件、行为变化、diff 摘要和验证结果。它不是私有思维链输出；如果你想关闭，可设置 `DEEPSEEK_WORKFLOW_PROMPT=off`。
 
 ## 常驻上下文
 
@@ -352,6 +356,7 @@ LICENSE                               MIT License
 - 原生工作流卡片、diff 卡片和工具事件显示由官方 Codex 扩展控制。
 - 插件、MCP、marketplace、connector 配置可以同步，但最终可用性以 Codex 面板实际暴露为准。
 - 常驻上下文是低优先级项目背景，不替代用户当前明确给出的文件、选区、附件和任务指令。
+- 可见工作流输出依赖模型遵循提示；它不是 Codex 官方原生 reasoning 卡片，也不会展示私有链式推理。
 - thinking 在工具调用中依赖代理内存缓存；代理重启后旧 tool call 的 `reasoning_content` 不再可恢复。
 - 当前快速启动路径以 Windows、PowerShell 和 VS Code 工作流为主。
 
@@ -424,6 +429,7 @@ The VS Code Codex desktop workflow is useful for real project work, but third-pa
 | DeepSeek and GPT need different network paths | Allows a dedicated HTTP / HTTPS upstream proxy for DeepSeek |
 | Normal Codex setup should stay untouched | Uses an isolated VS Code profile, isolated `CODEX_HOME`, and separate config |
 | CLI-only usage feels opaque | Keeps the Codex panel, file linkage, diffs, jumps, and session flow |
+| Work progress is hard to observe | Injects a visible workflow policy so DS gives short progress updates and final diff summaries |
 | thinking can conflict with tool calls | Caches and replays DeepSeek `reasoning_content`; downgrades safely when cache is missing |
 
 ## Features
@@ -433,6 +439,7 @@ The VS Code Codex desktop workflow is useful for real project work, but third-pa
 - **Unified command parser**: equivalent forms such as `/D-switch flash`, `D switch flash`, `switch flash`, and `switch-flash` share one parser.
 - **thinking mode control**: supports `think high`, `think max`, and `think off`.
 - **reasoning_content replay**: caches DeepSeek `reasoning_content` from tool-call turns and passes it back with tool outputs.
+- **Visible workflow output**: asks DS to provide short progress updates while working and final summaries with changed files, behavior changes, diff summary, and verification.
 - **Resident project context**: generates `.deepseek/resident-context.md` as low-priority project background.
 - **Dedicated upstream proxy**: DeepSeek traffic can use a separate proxy path.
 - **VS Code Codex workflow**: keep chat, files, selections, drag-and-drop, diffs, navigation, and guided task interaction.
@@ -520,6 +527,8 @@ Available commands:
 These commands are handled by the local DeepSeek proxy, so you do not need to edit config files manually. The proxy also accepts short aliases such as `help`, `model`, `switch flash`, `switch pro`, `think max`, `think high`, and `think off`.
 
 Note: the reasoning effort shown by Codex CLI is a Codex-side display field, not a native DeepSeek tier. DeepSeek V4 thinking is controlled by `thinking.enabled/disabled` and `reasoning_effort=high|max`. In tool workflows, the proxy caches DeepSeek `reasoning_content` and passes it back with tool results; if the proxy restarts or the cache is missing, that request is automatically downgraded to `thinking disabled` to avoid stream failures.
+
+The proxy also injects a visible workflow policy by default: DS should provide short progress updates while working and finish with changed files, behavior changes, diff summary, and verification. This is not hidden chain-of-thought output. Set `DEEPSEEK_WORKFLOW_PROMPT=off` to disable it.
 
 ## Resident Context
 
@@ -709,6 +718,7 @@ LICENSE                               MIT License
 - Native workflow cards, diff cards, and tool event rendering are controlled by the official Codex extension.
 - Plugin, MCP, marketplace, and connector config blocks can be synced, but final availability depends on what the Codex panel exposes.
 - Resident context is project background; explicit user instructions, attached files, and selections still take priority.
+- Visible workflow output depends on model instruction-following; it is not a native Codex reasoning card and does not expose hidden chain-of-thought.
 - thinking in tool workflows depends on proxy memory cache; after a proxy restart, old tool-call `reasoning_content` cannot be recovered.
 - The current quick-start path is centered on Windows, PowerShell, and VS Code.
 

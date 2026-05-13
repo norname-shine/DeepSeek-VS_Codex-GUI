@@ -30,6 +30,19 @@ const LANGUAGE_PROMPT =
   RESPONSE_LANGUAGE === "off" || RESPONSE_LANGUAGE === "none"
     ? ""
     : process.env.DEEPSEEK_LANGUAGE_PROMPT || DEFAULT_LANGUAGE_PROMPT;
+const DEFAULT_WORKFLOW_PROMPT = [
+  "Visible workflow policy for coding tasks:",
+  "- Do not reveal hidden chain-of-thought or private reasoning.",
+  "- While working, provide short visible progress updates before meaningful tool use or phase changes. These updates should state what you are checking or doing, not private reasoning.",
+  "- When editing files, mention the file path and the intended change before or immediately after the edit.",
+  "- At completion, include a concise final summary with: changed files, behavioral changes, diff summary, and verification performed.",
+  "- For the diff summary, name each changed file and summarize notable additions/removals. If exact line-level diff is unavailable, say it is based on observed edits/tool results.",
+  "- If no files changed, say so clearly.",
+].join("\n");
+const WORKFLOW_PROMPT =
+  process.env.DEEPSEEK_WORKFLOW_PROMPT === "off" || process.env.DEEPSEEK_WORKFLOW_PROMPT === "none"
+    ? ""
+    : process.env.DEEPSEEK_WORKFLOW_PROMPT || DEFAULT_WORKFLOW_PROMPT;
 const MODEL_NOT_MAPPED_MESSAGE =
   "This model is not mapped by ds-codex. DeepSeek mode only maps GPT-5.2 to DeepSeek Flash and GPT-5.3-Codex to DeepSeek Pro. To use official GPT models with your logged-in Codex account quota, restore or switch back to the official OpenAI Codex provider.";
 const deepSeekDispatcher = DEEPSEEK_UPSTREAM_PROXY ? new ProxyAgent(DEEPSEEK_UPSTREAM_PROXY) : undefined;
@@ -420,6 +433,10 @@ function responseInputToMessages(body, upstreamModel) {
 
   if (LANGUAGE_PROMPT.trim()) {
     messages.push({ role: "system", content: LANGUAGE_PROMPT.trim() });
+  }
+
+  if (WORKFLOW_PROMPT.trim()) {
+    messages.push({ role: "system", content: WORKFLOW_PROMPT.trim() });
   }
 
   const residentContext = readResidentContext();
